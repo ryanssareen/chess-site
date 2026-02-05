@@ -1,0 +1,9 @@
+node_modules
+.next
+.DS_Store
+.env
+frontend/.next
+server/dist
+prisma/dev.db
+npm-debug.log
+yarn-error.log
