@@ -76,7 +76,7 @@ export default function AnalysisPage() {
     try {
       const res = await api.post('/analysis/evaluate', { fen: chess.fen(), depth: 12 });
       setBestLine(res.data.bestLine);
-      setBestLineSan(toSanLine(chess.fen(), res.data.bestLine));
+      setBestLineSan(res.data.bestLineSan || toSanLine(chess.fen(), res.data.bestLine));
       setEvalScore(res.data.score);
     } finally {
       setLoading(false);
