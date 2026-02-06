@@ -1,7 +1,10 @@
 import { io, Socket } from 'socket.io-client';
 import { GameState, Move } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const rawBase =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4000');
+const SOCKET_URL = rawBase.replace(/\/$/, '');
 
 function authPayload() {
   if (typeof window === 'undefined') return {};
@@ -28,7 +31,7 @@ let socket: Socket | null = null;
 
 export function getSocket() {
   if (!socket) {
-    socket = io(API_URL, {
+    socket = io(SOCKET_URL, {
       transports: ['websocket'],
       autoConnect: true,
       withCredentials: true,

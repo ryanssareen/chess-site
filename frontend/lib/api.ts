@@ -1,7 +1,10 @@
 import axios from 'axios';
 import { GameState } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const rawBase =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4000');
+const API_URL = rawBase.replace(/\/$/, '');
 
 export const api = axios.create({
   baseURL: `${API_URL}/api`,
