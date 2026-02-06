@@ -10,7 +10,10 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   username  String   @unique
+  email     String?  @unique
   password  String
+  provider  String   @default("local")
+  googleId  String?  @unique
   rating    Int      @default(1500)
   createdAt DateTime @default(now())
   gamesWhite Game[]  @relation("white")

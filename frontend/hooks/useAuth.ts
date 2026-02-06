@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AuthUser } from '@/types';
-import { api, login, register } from '@/lib/api';
+import { api, login, loginWithGoogle, register } from '@/lib/api';
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -32,11 +32,18 @@ export function useAuth() {
     setUser(res);
   };
 
+  const signInWithGoogle = async (idToken: string) => {
+    const res = await loginWithGoogle(idToken);
+    api.defaults.headers.common['Authorization'] = `Bearer ${res.token}`;
+    window.localStorage.setItem('auth', JSON.stringify(res));
+    setUser(res);
+  };
+
   const signOut = () => {
     window.localStorage.removeItem('auth');
     delete api.defaults.headers.common['Authorization'];
     setUser(null);
   };
 
-  return { user, loading, signIn, signUp, signOut };
+  return { user, loading, signIn, signUp, signInWithGoogle, signOut };
 }

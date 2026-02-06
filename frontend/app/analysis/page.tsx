@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
 import { GameState } from '@/types';
@@ -30,7 +30,7 @@ export default function AnalysisPage() {
   const [evalScore, setEvalScore] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
-  const historyWithFen = () => {
+  const historyWithFen = useCallback(() => {
     const temp = new Chess();
     const verbose = chess.history({ verbose: true });
     const moves = [] as any[];
@@ -46,11 +46,11 @@ export default function AnalysisPage() {
       });
     });
     return moves;
-  };
+  }, [chess]);
 
   useEffect(() => {
     setGame((g) => ({ ...g, fen: chess.fen(), moves: historyWithFen() }));
-  }, [chess]);
+  }, [chess, historyWithFen]);
 
   const handleLocalMove = (fen: string) => {
     chess.load(fen);

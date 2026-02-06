@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { ThemeProvider } from '../components/ThemeProvider';
 import { Navbar } from '../components/Navbar';
+import { GoogleAuthProvider } from '../components/GoogleAuthProvider';
 
 export const metadata: Metadata = {
   title: 'Arcade Chess | Play & Improve',
@@ -19,10 +20,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <ThemeProvider>
-          <Navbar />
-          <main className="mx-auto max-w-6xl px-4 pb-16 pt-6">{children}</main>
-        </ThemeProvider>
+        <GoogleAuthProvider>
+          <ThemeProvider>
+            <Navbar />
+            <main className="mx-auto max-w-6xl px-4 pb-16 pt-6">{children}</main>
+          </ThemeProvider>
+        </GoogleAuthProvider>
       </body>
     </html>
   );

@@ -58,7 +58,7 @@ export default function OnlinePlayPage() {
           <div className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-lg">
             <h1 className="text-2xl font-semibold text-white">Find a match</h1>
             <p className="mt-2 text-slate-300">
-              Choose a time control and we'll pair you with someone near your rating.
+              Choose a time control and we&apos;ll pair you with someone near your rating.
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {TIME_CONTROLS.map((tc) => (

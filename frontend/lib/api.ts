@@ -18,6 +18,11 @@ export async function login(username: string, password: string) {
   return res.data;
 }
 
+export async function loginWithGoogle(idToken: string) {
+  const res = await api.post<AuthUser>('/auth/google', { idToken });
+  return res.data;
+}
+
 export async function createAIGame(level: number, timeControl: string) {
   const res = await api.post<GameState>('/match/ai', { level, timeControl });
   return res.data;

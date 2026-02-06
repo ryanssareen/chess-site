@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, Lock } from 'lucide-react';
 
 export default function AuthPage() {
-  const { user, signIn, signUp } = useAuth();
+  const { user, signIn, signUp, signInWithGoogle } = useAuth();
   const router = useRouter();
+  const googleEnabled = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -35,6 +37,22 @@ export default function AuthPage() {
       }
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onGoogle = async (cred: CredentialResponse) => {
+    if (!cred.credential) {
+      setError('Google authentication failed');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await signInWithGoogle(cred.credential);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Google sign-in failed');
     } finally {
       setLoading(false);
     }
@@ -76,6 +94,18 @@ export default function AuthPage() {
         >
           {loading ? 'Working...' : mode === 'login' ? 'Sign in' : 'Create account'}
         </button>
+        {googleEnabled && (
+          <>
+            <div className="text-center text-xs uppercase tracking-wide text-slate-500">or</div>
+            <GoogleLogin
+              onSuccess={onGoogle}
+              onError={() => setError('Google sign-in failed')}
+              width="100%"
+              shape="pill"
+              text="continue_with"
+            />
+          </>
+        )}
         <button
           onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
           className="w-full text-center text-xs text-slate-300 hover:text-white"
