@@ -41,6 +41,6 @@ export type GameState = {
 export type AuthUser = {
   id: string;
   username: string;
-  token: string;
+  token?: string;
   rating: number;
 };

@@ -14,7 +14,7 @@ const features = [
   },
   {
     title: 'Trusted Fair Play',
-    description: 'Server-side validation, anti-cheat signals, secure auth, and Glicko ratings.',
+    description: 'Server-side validation, anti-cheat signals, and fair play monitoring.',
     icon: ShieldCheck
   },
   {

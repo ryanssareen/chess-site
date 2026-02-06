@@ -1,118 +1,31 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
-import { useAuth } from '@/hooks/useAuth';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Lock } from 'lucide-react';
+import Link from 'next/link';
+import { Sparkles } from 'lucide-react';
 
 export default function AuthPage() {
-  const { user, signIn, signUp, signInWithGoogle } = useAuth();
   const router = useRouter();
-  const googleEnabled = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (user) {
-      router.replace('/profile');
-    }
-  }, [user, router]);
-
-  if (user) {
-    return <div className="text-slate-200">Redirecting to your profile...</div>;
-  }
-
-  const submit = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      if (mode === 'login') {
-        await signIn(username, password);
-      } else {
-        await signUp(username, password);
-      }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Authentication failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onGoogle = async (cred: CredentialResponse) => {
-    if (!cred.credential) {
-      setError('Google authentication failed');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      await signInWithGoogle(cred.credential);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Google sign-in failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+    router.replace('/play/online');
+  }, [router]);
 
   return (
-    <div className="mx-auto max-w-md rounded-3xl border border-white/5 bg-white/5 p-6 shadow-lg">
+    <div className="mx-auto max-w-md rounded-3xl border border-white/5 bg-white/5 p-6 text-slate-200">
       <div className="flex items-center gap-2 text-sm font-semibold text-white">
-        <ShieldCheck size={18} /> Secure account
+        <Sparkles size={18} /> No account needed
       </div>
-      <p className="mt-2 text-sm text-slate-300">Sign up or log in to play rated games and sync progress.</p>
-
-      <div className="mt-4 space-y-3">
-        <div>
-          <label className="text-xs text-slate-400">Username</label>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white outline-none focus:border-primary/60"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-slate-400">Password</label>
-          <div className="relative">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white outline-none focus:border-primary/60"
-            />
-            <Lock className="absolute right-3 top-2.5 h-4 w-4 text-slate-500" />
-          </div>
-        </div>
-        {error && <div className="text-sm text-red-400">{error}</div>}
-        <button
-          onClick={submit}
-          disabled={loading}
-          className="w-full rounded-xl bg-gradient-to-r from-primary to-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-glow disabled:opacity-60"
-        >
-          {loading ? 'Working...' : mode === 'login' ? 'Sign in' : 'Create account'}
-        </button>
-        {googleEnabled && (
-          <>
-            <div className="text-center text-xs uppercase tracking-wide text-slate-500">or</div>
-            <GoogleLogin
-              onSuccess={onGoogle}
-              onError={() => setError('Google sign-in failed')}
-              width="100%"
-              shape="pill"
-              text="continue_with"
-            />
-          </>
-        )}
-        <button
-          onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-          className="w-full text-center text-xs text-slate-300 hover:text-white"
-        >
-          {mode === 'login' ? "Don't have an account? Register" : 'Already registered? Sign in'}
-        </button>
-      </div>
+      <p className="mt-2 text-sm text-slate-300">
+        Authentication has been removed—jump straight into games as a guest. You&apos;ll be redirected to matchmaking.
+      </p>
+      <Link
+        href="/play/online"
+        className="mt-4 inline-flex rounded-lg bg-gradient-to-r from-primary to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-glow"
+      >
+        Start playing
+      </Link>
     </div>
   );
 }

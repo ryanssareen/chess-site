@@ -5,11 +5,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 function authPayload() {
   if (typeof window === 'undefined') return {};
-  const raw = window.localStorage.getItem('auth');
+  const raw = window.localStorage.getItem('guest');
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
-    return { userId: parsed.id, username: parsed.username, token: parsed.token };
+    return { userId: parsed.id, username: parsed.username };
   } catch (err) {
     return {};
   }

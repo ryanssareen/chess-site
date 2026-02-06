@@ -2,7 +2,6 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import { Server } from 'socket.io';
-import authRoutes from './routes/auth';
 import matchRoutes from './routes/match';
 import profileRoutes from './routes/profile';
 import historyRoutes from './routes/history';
@@ -15,7 +14,6 @@ app.use(express.json());
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
-app.use('/api/auth', authRoutes);
 app.use('/api/match', matchRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/history', historyRoutes);

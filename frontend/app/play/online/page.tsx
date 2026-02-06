@@ -39,14 +39,8 @@ export default function OnlinePlayPage() {
       setGameId(game.id);
       if (game.perspective) {
         setMyColor(game.perspective);
-      } else if (typeof window !== 'undefined') {
-        const raw = window.localStorage.getItem('auth');
-        const me = raw ? JSON.parse(raw) : null;
-        if (me?.id) {
-          setMyColor(game.players.white.id === me.id ? 'white' : 'black');
-        } else {
-          setMyColor('white');
-        }
+      } else {
+        setMyColor('white');
       }
     }
   }, [game]);

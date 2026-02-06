@@ -2,46 +2,50 @@
 
 import { useEffect, useState } from 'react';
 import { AuthUser } from '@/types';
-import { api, login, loginWithGoogle, register } from '@/lib/api';
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('auth');
+    const stored = window.localStorage.getItem('guest');
     if (stored) {
       const parsed: AuthUser = JSON.parse(stored);
       setUser(parsed);
-      api.defaults.headers.common['Authorization'] = `Bearer ${parsed.token}`;
+    } else {
+      const guest: AuthUser = {
+        id: `guest-${Math.random().toString(36).slice(2, 7)}`,
+        username: 'Guest',
+        rating: 1500,
+        token: ''
+      };
+      window.localStorage.setItem('guest', JSON.stringify(guest));
+      setUser(guest);
     }
     setLoading(false);
   }, []);
 
   const signIn = async (username: string, password: string) => {
-    const res = await login(username, password);
-    api.defaults.headers.common['Authorization'] = `Bearer ${res.token}`;
-    window.localStorage.setItem('auth', JSON.stringify(res));
-    setUser(res);
+    const guest = {
+      id: `guest-${Math.random().toString(36).slice(2, 7)}`,
+      username: username || 'Guest',
+      rating: 1500,
+      token: ''
+    };
+    window.localStorage.setItem('guest', JSON.stringify(guest));
+    setUser(guest);
   };
 
   const signUp = async (username: string, password: string) => {
-    const res = await register(username, password);
-    api.defaults.headers.common['Authorization'] = `Bearer ${res.token}`;
-    window.localStorage.setItem('auth', JSON.stringify(res));
-    setUser(res);
+    return signIn(username, password);
   };
 
   const signInWithGoogle = async (idToken: string) => {
-    const res = await loginWithGoogle(idToken);
-    api.defaults.headers.common['Authorization'] = `Bearer ${res.token}`;
-    window.localStorage.setItem('auth', JSON.stringify(res));
-    setUser(res);
+    return signIn('Guest', idToken);
   };
 
   const signOut = () => {
-    window.localStorage.removeItem('auth');
-    delete api.defaults.headers.common['Authorization'];
+    window.localStorage.removeItem('guest');
     setUser(null);
   };
 

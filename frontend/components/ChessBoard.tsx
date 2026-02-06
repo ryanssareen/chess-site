@@ -14,7 +14,7 @@ interface Props {
   game: GameState;
   meColor: 'white' | 'black';
   allowMoves?: boolean;
-  onMove?: (fen: string, san: string) => void;
+  onMove?: (fen: string, san: string, move: { from: string; to: string; promotion?: string }) => void;
 }
 
 export function ChessBoard({ game, meColor, allowMoves = true, onMove }: Props) {
@@ -32,7 +32,7 @@ export function ChessBoard({ game, meColor, allowMoves = true, onMove }: Props) 
     if (move) {
       if (onMove) {
         setChess(updated);
-        onMove(updated.fen(), move.san);
+        onMove(updated.fen(), move.san, { from: sourceSquare, to: targetSquare, promotion: 'q' });
       } else {
         socket.emit('move', { gameId: game.id, from: sourceSquare, to: targetSquare, promotion: 'q' });
         setChess(updated);

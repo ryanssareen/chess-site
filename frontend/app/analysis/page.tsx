@@ -27,6 +27,7 @@ export default function AnalysisPage() {
   const [game, setGame] = useState<GameState>(emptyGame);
   const [chess] = useState(() => new Chess());
   const [bestLine, setBestLine] = useState<string>('');
+  const [bestLineSan, setBestLineSan] = useState<string>('');
   const [evalScore, setEvalScore] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
@@ -52,9 +53,22 @@ export default function AnalysisPage() {
     setGame((g) => ({ ...g, fen: chess.fen(), moves: historyWithFen() }));
   }, [chess, historyWithFen]);
 
-  const handleLocalMove = (fen: string) => {
-    chess.load(fen);
+  const handleLocalMove = (_fen: string, san: string) => {
+    // Apply move to our local chess instance to preserve history for MoveList
+    chess.move(san);
+    const fen = chess.fen();
     setGame((g) => ({ ...g, fen, moves: historyWithFen(), pgn: chess.pgn() }));
+  };
+
+  const toSanLine = (fen: string, uciLine: string) => {
+    const tmp = new Chess(fen);
+    const parts = uciLine.split(' ').filter(Boolean);
+    const sans: string[] = [];
+    parts.forEach((uci) => {
+      const move = tmp.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || 'q' });
+      if (move) sans.push(move.san);
+    });
+    return sans.join(' ');
   };
 
   const requestEval = async () => {
@@ -62,6 +76,7 @@ export default function AnalysisPage() {
     try {
       const res = await api.post('/analysis/evaluate', { fen: chess.fen(), depth: 12 });
       setBestLine(res.data.bestLine);
+      setBestLineSan(toSanLine(chess.fen(), res.data.bestLine));
       setEvalScore(res.data.score);
     } finally {
       setLoading(false);
@@ -100,7 +115,9 @@ export default function AnalysisPage() {
       <div className="space-y-4">
         <div className="rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-slate-100">
           <div className="text-xs uppercase tracking-wide text-slate-400">Engine suggestion</div>
-          <div className="mt-2 text-lg font-semibold text-white">{bestLine || 'Run analysis to view best line'}</div>
+          <div className="mt-2 text-lg font-semibold text-white">
+            {bestLineSan || bestLine || 'Run analysis to view best line'}
+          </div>
           {evalScore && <div className="mt-1 text-slate-300">Eval: {evalScore}</div>}
         </div>
         <MoveList moves={game.moves} />
