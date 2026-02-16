@@ -8,6 +8,7 @@ Single-user chess training platform optimized for `ryansucksatlifetoo`.
 - Play only vs computer (multiplayer queue removed)
 - Review real Chess.com games with move-by-move board states
 - Run engine evaluation on any reviewed position
+- Optional frontend-only mode for deployments without a backend
 
 ## Tech Stack
 - **Frontend:** Next.js 14, TypeScript, TailwindCSS, Zustand, Socket.IO client
@@ -51,6 +52,8 @@ npm run dev --workspace frontend
 - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
 - `NEXT_PUBLIC_FIREBASE_APP_ID`
 - `NEXT_PUBLIC_TRAINING_USERNAME` (optional UI display override)
+- `NEXT_PUBLIC_CHESS_COM_USERNAME` (frontend-only review source)
+- `NEXT_PUBLIC_FRONTEND_ONLY=true` (skip backend and run local fallback logic)
 
 ## API Snapshot
 - `POST /api/auth/register` `{username, password}` -> `{token, user}`

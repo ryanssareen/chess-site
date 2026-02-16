@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Chess } from 'chess.js';
 import { TIME_CONTROLS } from '@/lib/timeControls';
-import { createAIGame } from '@/lib/api';
+import { appendLocalTrainingHistory, createAIGame, isFrontendOnlyMode } from '@/lib/api';
 import { useGameSocket, useGameStore } from '@/hooks/useGameClient';
 import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
@@ -11,8 +12,43 @@ import { GameHeader } from '@/components/GameHeader';
 import { Cpu, Loader2, Play } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
+import { GameState } from '@/types';
 
 const LEVELS = [1, 2, 4, 6, 8, 10];
+const FRONTEND_ONLY = isFrontendOnlyMode();
+
+type VerboseMove = {
+  from: string;
+  to: string;
+  promotion?: string;
+  san: string;
+  color: 'w' | 'b';
+  flags: string;
+};
+
+function pickAIMove(legalMoves: VerboseMove[], level: number) {
+  if (legalMoves.length === 0) return null;
+  if (level <= 2) {
+    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
+  }
+
+  const tactical = legalMoves.filter(
+    (move) => move.san.includes('+') || move.san.includes('#') || move.flags.includes('c')
+  );
+  const pool = level >= 6 && tactical.length > 0 ? tactical : legalMoves;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function finishedResult(board: Chess) {
+  if (!board.isGameOver()) return undefined;
+  if (board.isCheckmate()) {
+    return board.turn() === 'w' ? '0-1' : '1-0';
+  }
+  if (board.isDraw()) {
+    return '1/2-1/2';
+  }
+  return '1/2-1/2';
+}
 
 export default function AIPlayPage() {
   const router = useRouter();
@@ -22,9 +58,12 @@ export default function AIPlayPage() {
   const [gameId, setGameId] = useState<string>();
   const [status, setStatus] = useState<string>('');
   const [starting, setStarting] = useState(false);
-  const game = useGameStore((s) => s.game);
+  const [localGame, setLocalGame] = useState<GameState>();
+  const [savedLocalGames, setSavedLocalGames] = useState<string[]>([]);
+  const socketGame = useGameStore((s) => s.game);
+  const game = useMemo(() => (FRONTEND_ONLY ? localGame : socketGame), [localGame, socketGame]);
 
-  useGameSocket(gameId, Boolean(user));
+  useGameSocket(gameId, Boolean(user) && !FRONTEND_ONLY);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -32,17 +71,114 @@ export default function AIPlayPage() {
     }
   }, [loading, router, user]);
 
+  useEffect(() => {
+    if (!FRONTEND_ONLY || !game || game.status !== 'finished' || !user) return;
+    if (savedLocalGames.includes(game.id)) return;
+
+    const perspective = game.perspective || 'white';
+    appendLocalTrainingHistory({
+      id: game.id,
+      result: game.result || '1/2-1/2',
+      createdAt: new Date().toISOString(),
+      players: {
+        white: { username: game.players.white.username },
+        black: { username: game.players.black.username }
+      },
+      perspective
+    });
+    setSavedLocalGames((current) => [...current, game.id]);
+  }, [game, savedLocalGames, user]);
+
   const startGame = async () => {
     setStatus('');
     setStarting(true);
     try {
       const res = await createAIGame(level, selected.code);
-      setGameId(res.id);
+      if (FRONTEND_ONLY) {
+        setLocalGame(res);
+      } else {
+        setGameId(res.id);
+      }
     } catch (err: any) {
-      setStatus(err?.response?.data?.message || 'Failed to start game');
+      setStatus(err?.response?.data?.message || err?.message || 'Failed to start game');
     } finally {
       setStarting(false);
     }
+  };
+
+  const handleLocalMove = (_fen: string, _san: string, move: { from: string; to: string; promotion?: string }) => {
+    if (!FRONTEND_ONLY) return;
+
+    setLocalGame((current) => {
+      if (!current || current.status !== 'active') return current;
+
+      const board = new Chess(current.fen);
+      const played = board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+      if (!played) return current;
+
+      let updated: GameState = {
+        ...current,
+        fen: board.fen(),
+        pgn: board.pgn(),
+        turn: board.turn(),
+        lastMoveAt: Date.now(),
+        moves: [
+          ...current.moves,
+          {
+            san: played.san,
+            from: played.from,
+            to: played.to,
+            fen: board.fen(),
+            moveNumber: current.moves.length + 1,
+            player: played.color === 'w' ? 'white' : 'black'
+          }
+        ]
+      };
+
+      const firstResult = finishedResult(board);
+      if (firstResult) {
+        return { ...updated, status: 'finished', result: firstResult };
+      }
+
+      const legalMoves = board.moves({ verbose: true }) as VerboseMove[];
+      const aiChoice = pickAIMove(legalMoves, level);
+      if (!aiChoice) {
+        return { ...updated, status: 'finished', result: '1/2-1/2' };
+      }
+
+      const aiPlayed = board.move({
+        from: aiChoice.from,
+        to: aiChoice.to,
+        promotion: aiChoice.promotion || 'q'
+      });
+      if (!aiPlayed) return updated;
+
+      updated = {
+        ...updated,
+        fen: board.fen(),
+        pgn: board.pgn(),
+        turn: board.turn(),
+        lastMoveAt: Date.now(),
+        moves: [
+          ...updated.moves,
+          {
+            san: aiPlayed.san,
+            from: aiPlayed.from,
+            to: aiPlayed.to,
+            fen: board.fen(),
+            moveNumber: updated.moves.length + 1,
+            player: aiPlayed.color === 'w' ? 'white' : 'black'
+          }
+        ]
+      };
+
+      const secondResult = finishedResult(board);
+      if (secondResult) {
+        return { ...updated, status: 'finished', result: secondResult };
+      }
+
+      return updated;
+    });
   };
 
   if (loading || (!loading && !user)) {
@@ -64,6 +200,11 @@ export default function AIPlayPage() {
             <p className="mt-2 text-slate-300">
               Choose a difficulty and time control, then practice openings, tactics, and endgames.
             </p>
+            {FRONTEND_ONLY ? (
+              <p className="mt-2 text-xs text-amber-300">
+                Frontend-only mode is active. Computer replies are generated locally (no backend required).
+              </p>
+            ) : null}
             <div className="mt-4 grid grid-cols-2 gap-3">
               {TIME_CONTROLS.map((tc) => (
                 <button
@@ -117,7 +258,12 @@ export default function AIPlayPage() {
         {game && (
           <div className="space-y-4">
             <GameHeader game={game} />
-            <ChessBoard game={game} meColor={game.perspective || 'white'} allowMoves />
+            <ChessBoard
+              game={game}
+              meColor={game.perspective || 'white'}
+              allowMoves={game.status === 'active'}
+              onMove={FRONTEND_ONLY ? handleLocalMove : undefined}
+            />
           </div>
         )}
       </div>
@@ -128,6 +274,11 @@ export default function AIPlayPage() {
             <TimerBar value={game.clocks.white} active={game.turn === 'w'} lastMoveAt={game.lastMoveAt} />
             <TimerBar value={game.clocks.black} active={game.turn === 'b'} lastMoveAt={game.lastMoveAt} />
             <MoveList moves={game.moves} />
+            {game.result ? (
+              <div className="rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-slate-100">
+                Result: {game.result}
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="rounded-3xl border border-dashed border-white/10 bg-white/5 p-6 text-slate-300">

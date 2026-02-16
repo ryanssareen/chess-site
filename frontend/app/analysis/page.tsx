@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
 import { GameState, ReviewGame } from '@/types';
-import { api, fetchReviewGames } from '@/lib/api';
+import { api, fetchReviewGames, isFrontendOnlyMode } from '@/lib/api';
 import { LineChart, Loader2, RefreshCcw, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+
+const FRONTEND_ONLY = isFrontendOnlyMode();
 
 function resultBadge(result: ReviewGame['userResult']) {
   if (result === 'win') return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
@@ -100,6 +102,12 @@ export default function AnalysisPage() {
     setBestLine('');
     setBestLineSan('');
     setEvalScore('');
+
+    if (FRONTEND_ONLY) {
+      setBestLine('Engine eval is unavailable in frontend-only mode. Deploy backend to enable Stockfish analysis.');
+      setEvaluating(false);
+      return;
+    }
 
     try {
       const res = await api.post('/analysis/evaluate', { fen: currentFen, depth: 14 });
