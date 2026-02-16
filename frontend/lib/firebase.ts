@@ -2,10 +2,11 @@ import { FirebaseOptions, getApps, initializeApp } from 'firebase/app';
 import {
   ConfirmationResult,
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
   RecaptchaVerifier,
-  signInWithPhoneNumber,
-  signInWithPopup
+  signInWithRedirect,
+  signInWithPhoneNumber
 } from 'firebase/auth';
 
 const firebaseConfig: FirebaseOptions = {
@@ -36,12 +37,19 @@ function getFirebaseApp() {
   return initializeApp(firebaseConfig);
 }
 
-export async function signInWithFirebaseGoogle() {
+export async function startFirebaseGoogleRedirectSignIn() {
   const app = getFirebaseApp();
   const auth = getAuth(app);
   const provider = new GoogleAuthProvider();
-  const credential = await signInWithPopup(auth, provider);
-  return credential.user.getIdToken(true);
+  await signInWithRedirect(auth, provider);
+}
+
+export async function consumeFirebaseGoogleRedirectToken() {
+  const app = getFirebaseApp();
+  const auth = getAuth(app);
+  const result = await getRedirectResult(auth);
+  if (!result) return null;
+  return result.user.getIdToken(true);
 }
 
 function getOrCreateRecaptchaVerifier() {

@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Lock, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
+  consumeFirebaseGoogleRedirectToken,
   isFirebaseConfigured,
   requestPhoneVerificationCode,
   resetPhoneRecaptcha,
-  signInWithFirebaseGoogle,
+  startFirebaseGoogleRedirectSignIn,
   signInWithFirebasePhoneCode
 } from '@/lib/firebase';
 import type { ConfirmationResult } from 'firebase/auth';
@@ -34,6 +35,38 @@ export default function AuthPage() {
       router.replace('/play/ai');
     }
   }, [loading, router, user]);
+
+  useEffect(() => {
+    if (!firebaseEnabled) return;
+    let cancelled = false;
+
+    const consumeRedirect = async () => {
+      try {
+        const idToken = await consumeFirebaseGoogleRedirectToken();
+        if (!idToken) return;
+        setSubmitting(true);
+        setMessage('');
+        await signInWithGoogle(idToken);
+        if (!cancelled) {
+          router.replace('/play/ai');
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setMessage(err?.response?.data?.message || err?.message || 'Google login failed');
+        }
+      } finally {
+        if (!cancelled) {
+          setSubmitting(false);
+        }
+      }
+    };
+
+    consumeRedirect();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseEnabled, router, signInWithGoogle]);
 
   useEffect(() => {
     return () => {
@@ -64,16 +97,11 @@ export default function AuthPage() {
     setSubmitting(true);
     setMessage('');
     try {
-      const idToken = await signInWithFirebaseGoogle();
-      await signInWithGoogle(idToken);
-      router.replace('/play/ai');
+      await startFirebaseGoogleRedirectSignIn();
     } catch (err: any) {
       const firebaseMessage =
-        err?.code === 'auth/popup-closed-by-user'
-          ? 'Google sign-in was cancelled'
-          : err?.response?.data?.message || err?.message || 'Google login failed';
+        err?.response?.data?.message || err?.message || 'Google login failed';
       setMessage(firebaseMessage);
-    } finally {
       setSubmitting(false);
     }
   };
@@ -196,7 +224,7 @@ export default function AuthPage() {
             onClick={handleGoogleSignIn}
             className="inline-flex w-full items-center justify-center rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-primary/50 disabled:opacity-60"
           >
-            Continue with Google (Firebase)
+            Continue with Google (redirect)
           </button>
 
           <div className="rounded-xl border border-white/10 bg-slate-900/40 p-3">

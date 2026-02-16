@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Loader2, UserRound } from 'lucide-react';
 import { fetchHistory, fetchProfile } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,18 +27,11 @@ type HistoryGame = {
 };
 
 export default function ProfilePage() {
-  const router = useRouter();
   const { user, loading } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [history, setHistory] = useState<HistoryGame[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [message, setMessage] = useState<string>('');
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/auth');
-    }
-  }, [loading, router, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -58,7 +51,30 @@ export default function ProfilePage() {
     load();
   }, [user]);
 
-  if (loading || (!loading && !user) || loadingData) {
+  if (loading) {
+    return (
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-100">
+        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+        <div className="text-lg font-semibold text-white">Sign in required</div>
+        <p className="mt-2 text-sm text-slate-300">Login to view your training profile and game history.</p>
+        <Link
+          href="/auth"
+          className="mt-4 inline-flex rounded-lg bg-gradient-to-r from-primary to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-glow"
+        >
+          Go to login
+        </Link>
+      </div>
+    );
+  }
+
+  if (loadingData) {
     return (
       <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-100">
         <Loader2 className="mx-auto h-5 w-5 animate-spin" />

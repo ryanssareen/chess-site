@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
 import { GameState, ReviewGame } from '@/types';
@@ -20,7 +20,6 @@ function resultBadge(result: ReviewGame['userResult']) {
 }
 
 export default function AnalysisPage() {
-  const router = useRouter();
   const { user, loading } = useAuth();
   const [games, setGames] = useState<ReviewGame[]>([]);
   const [loadingGames, setLoadingGames] = useState(true);
@@ -31,12 +30,6 @@ export default function AnalysisPage() {
   const [bestLineSan, setBestLineSan] = useState('');
   const [evalScore, setEvalScore] = useState('');
   const [evaluating, setEvaluating] = useState(false);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/auth');
-    }
-  }, [loading, router, user]);
 
   const loadGames = useCallback(async () => {
     setLoadingGames(true);
@@ -125,7 +118,30 @@ export default function AnalysisPage() {
     }
   };
 
-  if (loading || (!loading && !user) || loadingGames) {
+  if (loading) {
+    return (
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-100">
+        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+        <div className="text-lg font-semibold text-white">Sign in required</div>
+        <p className="mt-2 text-sm text-slate-300">Login to open game review and analysis.</p>
+        <Link
+          href="/auth"
+          className="mt-4 inline-flex rounded-lg bg-gradient-to-r from-primary to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-glow"
+        >
+          Go to login
+        </Link>
+      </div>
+    );
+  }
+
+  if (loadingGames) {
     return (
       <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-100">
         <Loader2 className="mx-auto h-5 w-5 animate-spin" />

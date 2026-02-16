@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Chess } from 'chess.js';
 import { TIME_CONTROLS } from '@/lib/timeControls';
 import { appendLocalTrainingHistory, createAIGame, isFrontendOnlyMode } from '@/lib/api';
@@ -11,11 +12,18 @@ import { TimerBar } from '@/components/TimerBar';
 import { GameHeader } from '@/components/GameHeader';
 import { Cpu, Loader2, Play } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from 'next/navigation';
 import { GameState } from '@/types';
 
 const LEVELS = [1, 2, 4, 6, 8, 10];
 const FRONTEND_ONLY = isFrontendOnlyMode();
+const PIECE_VALUES: Record<string, number> = {
+  p: 100,
+  n: 320,
+  b: 330,
+  r: 500,
+  q: 900,
+  k: 0
+};
 
 type VerboseMove = {
   from: string;
@@ -25,19 +33,6 @@ type VerboseMove = {
   color: 'w' | 'b';
   flags: string;
 };
-
-function pickAIMove(legalMoves: VerboseMove[], level: number) {
-  if (legalMoves.length === 0) return null;
-  if (level <= 2) {
-    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
-  }
-
-  const tactical = legalMoves.filter(
-    (move) => move.san.includes('+') || move.san.includes('#') || move.flags.includes('c')
-  );
-  const pool = level >= 6 && tactical.length > 0 ? tactical : legalMoves;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
 
 function finishedResult(board: Chess) {
   if (!board.isGameOver()) return undefined;
@@ -50,8 +45,122 @@ function finishedResult(board: Chess) {
   return '1/2-1/2';
 }
 
+function terminalScore(board: Chess, aiColor: 'w' | 'b', depth: number) {
+  if (board.isCheckmate()) {
+    return board.turn() === aiColor ? -100000 - depth : 100000 + depth;
+  }
+  if (board.isDraw()) return 0;
+  return null;
+}
+
+function evaluateBoard(board: Chess, aiColor: 'w' | 'b') {
+  const rows = board.board();
+  let score = 0;
+
+  rows.forEach((row) => {
+    row.forEach((piece) => {
+      if (!piece) return;
+      const value = PIECE_VALUES[piece.type] || 0;
+      score += piece.color === aiColor ? value : -value;
+    });
+  });
+
+  const mobility = board.moves().length;
+  score += board.turn() === aiColor ? mobility : -mobility;
+  return score;
+}
+
+function tacticalWeight(move: VerboseMove) {
+  let weight = 0;
+  if (move.flags.includes('c') || move.flags.includes('e')) weight += 30;
+  if (move.flags.includes('p')) weight += 20;
+  if (move.san.includes('+')) weight += 10;
+  if (move.san.includes('#')) weight += 1000;
+  return weight;
+}
+
+function orderMoves(moves: VerboseMove[]) {
+  return [...moves].sort((a, b) => tacticalWeight(b) - tacticalWeight(a));
+}
+
+function minimax(
+  board: Chess,
+  depth: number,
+  alpha: number,
+  beta: number,
+  maximizing: boolean,
+  aiColor: 'w' | 'b'
+): number {
+  const terminal = terminalScore(board, aiColor, depth);
+  if (terminal !== null) return terminal;
+  if (depth === 0) return evaluateBoard(board, aiColor);
+
+  const legalMoves = orderMoves(board.moves({ verbose: true }) as unknown as VerboseMove[]);
+  if (legalMoves.length === 0) return evaluateBoard(board, aiColor);
+
+  if (maximizing) {
+    let best = -Infinity;
+    for (const move of legalMoves) {
+      board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+      const score = minimax(board, depth - 1, alpha, beta, false, aiColor);
+      board.undo();
+      if (score > best) best = score;
+      if (score > alpha) alpha = score;
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+
+  let best = Infinity;
+  for (const move of legalMoves) {
+    board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+    const score = minimax(board, depth - 1, alpha, beta, true, aiColor);
+    board.undo();
+    if (score < best) best = score;
+    if (score < beta) beta = score;
+    if (beta <= alpha) break;
+  }
+  return best;
+}
+
+function searchAIMove(board: Chess, level: number, aiColor: 'w' | 'b') {
+  const legalMoves = orderMoves(board.moves({ verbose: true }) as unknown as VerboseMove[]);
+  if (legalMoves.length === 0) return null;
+
+  if (level <= 2) {
+    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
+  }
+
+  const depth = level >= 10 ? 4 : level >= 8 ? 3 : level >= 6 ? 3 : level >= 4 ? 2 : 1;
+  let bestScore = -Infinity;
+  let bestMoves: VerboseMove[] = [];
+
+  for (const move of legalMoves) {
+    board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
+    const score = minimax(board, depth - 1, -Infinity, Infinity, false, aiColor);
+    board.undo();
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMoves = [move];
+    } else if (score === bestScore) {
+      bestMoves.push(move);
+    }
+  }
+
+  if (bestMoves.length === 0) {
+    return legalMoves[0];
+  }
+
+  if (level <= 4) {
+    const topSlice = bestMoves.slice(0, Math.min(3, bestMoves.length));
+    return topSlice[Math.floor(Math.random() * topSlice.length)];
+  }
+
+  return bestMoves[0];
+}
+
 export default function AIPlayPage() {
-  const router = useRouter();
   const { user, loading } = useAuth();
   const [selected, setSelected] = useState(TIME_CONTROLS[3]);
   const [level, setLevel] = useState(4);
@@ -66,16 +175,9 @@ export default function AIPlayPage() {
   useGameSocket(gameId, Boolean(user) && !FRONTEND_ONLY);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/auth');
-    }
-  }, [loading, router, user]);
-
-  useEffect(() => {
     if (!FRONTEND_ONLY || !game || game.status !== 'finished' || !user) return;
     if (savedLocalGames.includes(game.id)) return;
 
-    const perspective = game.perspective || 'white';
     appendLocalTrainingHistory({
       id: game.id,
       result: game.result || '1/2-1/2',
@@ -84,7 +186,7 @@ export default function AIPlayPage() {
         white: { username: game.players.white.username },
         black: { username: game.players.black.username }
       },
-      perspective
+      perspective: game.perspective || 'white'
     });
     setSavedLocalGames((current) => [...current, game.id]);
   }, [game, savedLocalGames, user]);
@@ -140,8 +242,9 @@ export default function AIPlayPage() {
         return { ...updated, status: 'finished', result: firstResult };
       }
 
-      const legalMoves = board.moves({ verbose: true }) as VerboseMove[];
-      const aiChoice = pickAIMove(legalMoves, level);
+      if (board.turn() !== 'b') return updated;
+
+      const aiChoice = searchAIMove(board, level, 'b');
       if (!aiChoice) {
         return { ...updated, status: 'finished', result: '1/2-1/2' };
       }
@@ -181,10 +284,25 @@ export default function AIPlayPage() {
     });
   };
 
-  if (loading || (!loading && !user)) {
+  if (loading) {
     return (
       <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-100">
         <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-xl rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+        <div className="text-lg font-semibold text-white">Sign in required</div>
+        <p className="mt-2 text-sm text-slate-300">Login first to start training and save your local progress.</p>
+        <Link
+          href="/auth"
+          className="mt-4 inline-flex rounded-lg bg-gradient-to-r from-primary to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-glow"
+        >
+          Go to login
+        </Link>
       </div>
     );
   }
@@ -202,7 +320,7 @@ export default function AIPlayPage() {
             </p>
             {FRONTEND_ONLY ? (
               <p className="mt-2 text-xs text-amber-300">
-                Frontend-only mode is active. Computer replies are generated locally (no backend required).
+                Frontend-only mode is active. A local minimax engine is used while backend is offline.
               </p>
             ) : null}
             <div className="mt-4 grid grid-cols-2 gap-3">
