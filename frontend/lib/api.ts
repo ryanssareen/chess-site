@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { AuthUser, GameState, ReviewGame } from '@/types';
 
 const rawBase =
@@ -20,8 +20,8 @@ api.interceptors.request.use((request) => {
   try {
     const parsed = JSON.parse(raw) as AuthUser;
     if (parsed.token) {
-      const headers = (request.headers || {}) as Record<string, string>;
-      headers.Authorization = `Bearer ${parsed.token}`;
+      const headers = AxiosHeaders.from(request.headers);
+      headers.set('Authorization', `Bearer ${parsed.token}`);
       request.headers = headers;
     }
   } catch (err) {
