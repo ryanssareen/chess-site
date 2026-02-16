@@ -138,7 +138,7 @@ export default function AnalysisPage() {
               <RefreshCcw size={12} /> Refresh
             </button>
           </div>
-          <p className="mt-2 text-xs text-slate-400">Recent real games for username: {user.username}</p>
+          <p className="mt-2 text-xs text-slate-400">Recent real games for username: {user?.username || 'training-user'}</p>
           <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
             {games.map((game) => (
               <button
