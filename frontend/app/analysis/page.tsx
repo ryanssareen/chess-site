@@ -8,8 +8,10 @@ import { GameState, ReviewGame } from '@/types';
 import { api, fetchReviewGames, isFrontendOnlyMode } from '@/lib/api';
 import { LineChart, Loader2, RefreshCcw, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { Chess } from 'chess.js';
 
 const FRONTEND_ONLY = isFrontendOnlyMode();
+const START_FEN = new Chess().fen();
 
 function resultBadge(result: ReviewGame['userResult']) {
   if (result === 'win') return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
@@ -67,7 +69,7 @@ export default function AnalysisPage() {
     [games, selectedGameId]
   );
   const totalMoves = selectedGame?.moves.length || 0;
-  const currentFen = selectedGame ? (ply > 0 ? selectedGame.moves[ply - 1]?.fen || 'start' : 'start') : 'start';
+  const currentFen = selectedGame ? (ply > 0 ? selectedGame.moves[ply - 1]?.fen || START_FEN : START_FEN) : START_FEN;
   const visibleMoves = selectedGame ? selectedGame.moves.slice(0, ply) : [];
 
   const boardGame: GameState = useMemo(
