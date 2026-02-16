@@ -1,7 +1,17 @@
 import { Request } from 'express';
 
+export type SessionUser = {
+  id: string;
+  username: string;
+  rating: number;
+  email?: string | null;
+  provider?: string;
+  createdAt?: Date;
+};
+
 export interface AuthedRequest extends Request {
   userId?: string;
+  user?: SessionUser;
 }
 
 export type TimeControl = {

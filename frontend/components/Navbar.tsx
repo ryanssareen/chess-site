@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
-import { Flame, Moon, Sun, User } from 'lucide-react';
+import { Brain, Flame, LogOut, Moon, Sun, User } from 'lucide-react';
 import clsx from 'clsx';
+import { useAuth } from '@/hooks/useAuth';
 
 export function Navbar() {
   const { theme, setTheme } = useTheme();
+  const { user, loading, signOut } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -33,14 +35,14 @@ export function Navbar() {
         </Link>
 
         <nav className="hidden items-center gap-6 text-sm font-medium text-slate-200 md:flex">
-          <Link href="/play/online" className="hover:text-white">
-            Play Online
-          </Link>
           <Link href="/play/ai" className="hover:text-white">
-            vs AI
+            Play vs Computer
           </Link>
           <Link href="/analysis" className="hover:text-white">
-            Analysis
+            Game Review
+          </Link>
+          <Link href="/profile" className="hover:text-white">
+            Profile
           </Link>
         </nav>
 
@@ -52,15 +54,40 @@ export function Navbar() {
           >
             {mounted && theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
+          {!loading && user ? (
+            <button
+              type="button"
+              onClick={signOut}
+              className={clsx(
+                'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition',
+                'border border-white/15 bg-white/5 text-slate-100 hover:border-primary/40'
+              )}
+            >
+              <LogOut size={16} />
+              Sign out
+            </button>
+          ) : (
+            <Link
+              href="/auth"
+              className={clsx(
+                'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition',
+                'bg-gradient-to-r from-primary to-emerald-500 text-white hover:shadow-glow'
+              )}
+            >
+              <User size={16} />
+              Login
+            </Link>
+          )}
+
           <Link
-            href="/play/online"
+            href="/play/ai"
             className={clsx(
-              'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition',
+              'hidden items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition md:inline-flex',
               'bg-gradient-to-r from-primary to-emerald-500 text-white hover:shadow-glow'
             )}
           >
-            <User size={16} />
-            Play Now
+            <Brain size={16} />
+            Train
           </Link>
         </div>
       </div>

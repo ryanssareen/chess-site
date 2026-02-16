@@ -4,8 +4,8 @@ import { ThemeProvider } from '../components/ThemeProvider';
 import { Navbar } from '../components/Navbar';
 
 export const metadata: Metadata = {
-  title: 'Arcade Chess | Play & Improve',
-  description: 'Modern open-source chess platform for real-time play, AI training, and analysis.',
+  title: 'Chess Training Platform | ryansucksatlifetoo',
+  description: 'Single-user chess training with AI sparring, Chess.com review, and focused analysis.',
   icons: {
     icon: '/favicon.ico'
   }

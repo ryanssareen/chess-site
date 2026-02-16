@@ -1,21 +1,23 @@
 import Link from 'next/link';
-import { Sparkles, ShieldCheck, Zap, Timer, Cpu } from 'lucide-react';
+import { Sparkles, ShieldCheck, Timer, Cpu, NotebookTabs } from 'lucide-react';
+
+const TRAINING_USERNAME = process.env.NEXT_PUBLIC_TRAINING_USERNAME || 'ryansucksatlifetoo';
 
 const features = [
-  {
-    title: 'Real-time Play',
-    description: 'Low-latency WebSocket architecture with matchmaking, spectating, and tournaments.',
-    icon: Zap
-  },
   {
     title: 'AI Sparring',
     description: 'Stockfish-powered training with adjustable depth and themed challenges.',
     icon: Cpu
   },
   {
-    title: 'Trusted Fair Play',
-    description: 'Server-side validation, anti-cheat signals, and fair play monitoring.',
+    title: 'Single-User Focus',
+    description: 'Locked to one dedicated training account for consistent progress tracking.',
     icon: ShieldCheck
+  },
+  {
+    title: 'Game Review',
+    description: 'Import recent Chess.com games and replay every move with board states.',
+    icon: NotebookTabs
   },
   {
     title: 'Time Controls',
@@ -31,26 +33,26 @@ export default function HomePage() {
         <div className="space-y-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-white/10 px-3 py-1 text-xs font-semibold text-primary">
             <Sparkles size={14} />
-            Open-source chess for humans and engines
+            Training platform for {TRAINING_USERNAME}
           </div>
           <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
-            Play beautiful chess with real-time speed and pro-grade analysis.
+            Train against Stockfish and review real Chess.com games.
           </h1>
           <p className="text-lg text-slate-300">
-            Arcade Chess brings tournament-grade clocks, Stockfish sparring, live spectating, and collaborative analysis into a single, modern web app.
+            This build is optimized for one account only, with password/Google login, AI practice, and real-game review workflows.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/play/online"
+              href="/play/ai"
               className="rounded-xl bg-gradient-to-r from-primary to-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-glow transition hover:scale-[1.01]"
             >
-              Play Online Now
+              Start Training
             </Link>
             <Link
-              href="/play/ai"
+              href="/analysis"
               className="rounded-xl border border-white/10 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:border-primary/50 hover:text-white"
             >
-              Train vs AI
+              Review Games
             </Link>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm text-slate-300 sm:w-3/4">
@@ -77,7 +79,7 @@ export default function HomePage() {
             <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-slate-200">
               <div className="rounded-xl border border-white/5 bg-white/5 p-3">
                 <div className="text-slate-400">Time</div>
-                <div className="text-white">03:00 vs 03:00</div>
+                <div className="text-white">03:00 training</div>
               </div>
               <div className="rounded-xl border border-white/5 bg-white/5 p-3">
                 <div className="text-slate-400">Increment</div>
@@ -85,7 +87,7 @@ export default function HomePage() {
               </div>
               <div className="rounded-xl border border-white/5 bg-white/5 p-3">
                 <div className="text-slate-400">Mode</div>
-                <div className="text-white">Rated</div>
+                <div className="text-white">Single-user</div>
               </div>
             </div>
           </div>
@@ -107,14 +109,14 @@ export default function HomePage() {
 
       <section className="grid gap-8 lg:grid-cols-2">
         <div className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-lg shadow-primary/20">
-          <h2 className="text-2xl font-semibold text-white">Live spectating and analysis</h2>
+          <h2 className="text-2xl font-semibold text-white">Real-game review workflow</h2>
           <p className="mt-2 text-slate-300">
-            Jump into any public board, rewind moves, explore lines with Stockfish, and annotate positions with your friends.
+            Pull your latest Chess.com games, replay each position, and ask Stockfish for better lines on any move.
           </p>
           <ul className="mt-4 space-y-2 text-sm text-slate-300">
-            <li>• Real-time move feed with arrows and highlights</li>
-            <li>• Move explorer with ECO classifications</li>
-            <li>• Cloud-synced notebooks for coaches and teams</li>
+            <li>• Real move-by-move replay from imported PGN</li>
+            <li>• Opening metadata and game outcomes</li>
+            <li>• Position evaluation with principal variation</li>
           </ul>
           <Link
             href="/analysis"
@@ -125,20 +127,20 @@ export default function HomePage() {
         </div>
 
         <div className="rounded-3xl border border-white/5 bg-white/5 p-6 shadow-lg shadow-primary/20">
-          <h2 className="text-2xl font-semibold text-white">Competitive ladder with smart matchmaking</h2>
+          <h2 className="text-2xl font-semibold text-white">Focused AI training</h2>
           <p className="mt-2 text-slate-300">
-            A Glicko-inspired system with decay and provisional ranges keeps pairings fair and queues short.
+            Build consistency with controlled practice games against Stockfish at the time controls you care about.
           </p>
           <ul className="mt-4 space-y-2 text-sm text-slate-300">
-            <li>• Rating pools per time control</li>
-            <li>• Match history, streaks, and insights</li>
-            <li>• Friend challenges and private arenas</li>
+            <li>• Difficulty levels for tactical and positional drills</li>
+            <li>• Stored game history under your account</li>
+            <li>• Multiplayer removed to keep training uninterrupted</li>
           </ul>
           <Link
-            href="/play/online"
+            href="/play/ai"
             className="mt-4 inline-flex rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-slate-100 hover:border-primary/50"
           >
-            Start a rated game
+            Open training board
           </Link>
         </div>
       </section>

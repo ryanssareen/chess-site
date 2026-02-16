@@ -8,6 +8,7 @@ import { engine } from './chessEngine';
 const games = new Map<string, InMemoryGame>();
 const boards = new Map<string, Chess>();
 const queues = new Map<string, { player: { id: string; username: string; rating: number } }>();
+const TRAINING_BOT_USERNAME = 'training-bot';
 
 export function parseTimeControl(code: string): TimeControl {
   const [initial, inc] = code.split('+').map(Number);
@@ -74,7 +75,20 @@ export async function createAIGame(
   timeControl: string,
   level: number
 ) {
-  const ai = { id: 'ai', username: `Stockfish ${level}`, rating: 2600 };
+  const aiUser = await prisma.user.upsert({
+    where: { username: TRAINING_BOT_USERNAME },
+    update: {
+      rating: 2600,
+      provider: 'bot'
+    },
+    create: {
+      username: TRAINING_BOT_USERNAME,
+      password: 'bot-account-disabled',
+      provider: 'bot',
+      rating: 2600
+    }
+  });
+  const ai = { id: aiUser.id, username: `Stockfish ${level}`, rating: 2600 };
   const game = createGame(player, ai, timeControl, false);
   // Immediately make AI weaker by setting skill level via rating maybe not needed
   return game;
@@ -137,9 +151,9 @@ export async function handleMove(
     games.set(gameId, game);
   }
 
-  let aiMove;
-  if (game.black.id === 'ai' || game.white.id === 'ai') {
-    const aiColor = game.black.id === 'ai' ? 'b' : 'w';
+  let aiMove: Awaited<ReturnType<typeof makeAIMove>> | undefined;
+  if (game.black.username.startsWith('Stockfish') || game.white.username.startsWith('Stockfish')) {
+    const aiColor = game.black.username.startsWith('Stockfish') ? 'b' : 'w';
     if (board.turn() === aiColor && !board.isGameOver()) {
       aiMove = await makeAIMove(gameId);
     }
@@ -158,7 +172,11 @@ async function makeAIMove(gameId: string) {
   const from = move.slice(0, 2);
   const to = move.slice(2, 4);
   const promotion = move.slice(4) || 'q';
-  return handleMove(gameId, { from, to, promotion }, game.black.id === 'ai' ? game.black.id : game.white.id);
+  return handleMove(
+    gameId,
+    { from, to, promotion },
+    game.black.username.startsWith('Stockfish') ? game.black.id : game.white.id
+  );
 }
 
 async function persistGame(game: InMemoryGame) {
@@ -166,9 +184,7 @@ async function persistGame(game: InMemoryGame) {
     !game.white.id ||
     !game.black.id ||
     game.white.id.startsWith('guest') ||
-    game.black.id.startsWith('guest') ||
-    game.white.id === 'ai' ||
-    game.black.id === 'ai';
+    game.black.id.startsWith('guest');
   if (skipPersist) return;
   try {
     await prisma.game.create({

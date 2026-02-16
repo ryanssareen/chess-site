@@ -33,12 +33,14 @@ export const useGameStore = create<GameStore>((set) => ({
   reset: () => set({ game: undefined })
 }));
 
-export function useGameSocket(gameId?: string) {
+export function useGameSocket(gameId?: string, enabled = true) {
   const setGame = useGameStore((s) => s.setGame);
   const addMove = useGameStore((s) => s.addMove);
   const reset = useGameStore((s) => s.reset);
 
   useEffect(() => {
+    if (!enabled) return;
+
     const socket = getSocket();
 
     const handlers = {
@@ -59,5 +61,5 @@ export function useGameSocket(gameId?: string) {
       }
       reset();
     };
-  }, [gameId, addMove, reset, setGame]);
+  }, [gameId, addMove, enabled, reset, setGame]);
 }

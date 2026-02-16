@@ -20,7 +20,7 @@ export function GameHeader({ game }: { game: GameState }) {
           <Trophy size={14} /> {game.timeControl.label || game.timeControl.code}
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1">
-          <Eye size={14} /> Spectator mode
+          <Eye size={14} /> Training mode
         </span>
       </div>
     </div>

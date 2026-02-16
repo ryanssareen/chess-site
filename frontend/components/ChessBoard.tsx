@@ -19,7 +19,7 @@ interface Props {
 
 export function ChessBoard({ game, meColor, allowMoves = true, onMove }: Props) {
   const [chess, setChess] = useState(() => new Chess(game.fen));
-  const socket = useMemo(() => getSocket(), []);
+  const socket = useMemo(() => (allowMoves && !onMove ? getSocket() : null), [allowMoves, onMove]);
 
   useEffect(() => {
     setChess(new Chess(game.fen));
@@ -34,7 +34,7 @@ export function ChessBoard({ game, meColor, allowMoves = true, onMove }: Props) 
         setChess(updated);
         onMove(updated.fen(), move.san, { from: sourceSquare, to: targetSquare, promotion: 'q' });
       } else {
-        socket.emit('move', { gameId: game.id, from: sourceSquare, to: targetSquare, promotion: 'q' });
+        socket?.emit('move', { gameId: game.id, from: sourceSquare, to: targetSquare, promotion: 'q' });
         setChess(updated);
       }
       return true;

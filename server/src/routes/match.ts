@@ -1,29 +1,23 @@
 import { Router } from 'express';
-import { nanoid } from 'nanoid';
-import { createAIGame, queuePlayer } from '../services/gameService';
+import { createAIGame } from '../services/gameService';
 import { AuthedRequest } from '../types';
-import { requireAuth } from '../middleware/auth';
+import { requireTrainingUser } from '../middleware/auth';
+import { prisma } from '../db';
 
 const router = Router();
 
-router.post('/queue', async (req: AuthedRequest, res) => {
-  const user = req.userId
-    ? { id: req.userId, username: req.body.username || 'You', rating: 1500 }
-    : { id: 'guest-' + nanoid(4), username: 'Guest', rating: 1500 };
-  const { timeControl = '3+2', rated = true } = req.body;
-  const { matched, game } = await queuePlayer(user, timeControl, rated);
-  if (matched && game) {
-    res.json({ gameId: game.id });
-  } else {
-    res.json({ gameId: null, queued: true });
-  }
+router.post('/queue', requireTrainingUser, async (_req: AuthedRequest, res) => {
+  res.status(410).json({ message: 'Online multiplayer is disabled. Use Play vs Computer for training.' });
 });
 
-router.post('/ai', async (req: AuthedRequest, res) => {
+router.post('/ai', requireTrainingUser, async (req: AuthedRequest, res) => {
   const { level = 4, timeControl = '5+0' } = req.body;
-  const user = req.userId
-    ? { id: req.userId, username: req.body.username || 'You', rating: 1500 }
-    : { id: 'guest-' + nanoid(4), username: 'Guest', rating: 1500 };
+  if (!req.userId) return res.status(401).json({ message: 'Unauthorized' });
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { id: true, username: true, rating: true }
+  });
+  if (!user) return res.status(404).json({ message: 'User not found' });
   const game = await createAIGame(user, timeControl, level);
   res.json(game);
 });

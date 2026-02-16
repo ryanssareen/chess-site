@@ -41,6 +41,23 @@ export type GameState = {
 export type AuthUser = {
   id: string;
   username: string;
-  token?: string;
+  token: string;
   rating: number;
+  email?: string | null;
+  provider?: string;
+};
+
+export type ReviewGame = {
+  id: string;
+  url?: string;
+  playedAt: string;
+  opponent: string;
+  asColor: 'white' | 'black';
+  userResult: 'win' | 'draw' | 'loss';
+  resultTag: string;
+  timeClass: string;
+  timeControl: string;
+  opening: string;
+  moves: Move[];
+  pgn: string;
 };

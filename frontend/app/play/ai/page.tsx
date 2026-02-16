@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TIME_CONTROLS } from '@/lib/timeControls';
 import { createAIGame } from '@/lib/api';
 import { useGameSocket, useGameStore } from '@/hooks/useGameClient';
@@ -8,22 +8,50 @@ import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
 import { TimerBar } from '@/components/TimerBar';
 import { GameHeader } from '@/components/GameHeader';
-import { Cpu, Play } from 'lucide-react';
+import { Cpu, Loader2, Play } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from 'next/navigation';
 
 const LEVELS = [1, 2, 4, 6, 8, 10];
 
 export default function AIPlayPage() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const [selected, setSelected] = useState(TIME_CONTROLS[3]);
   const [level, setLevel] = useState(4);
   const [gameId, setGameId] = useState<string>();
+  const [status, setStatus] = useState<string>('');
+  const [starting, setStarting] = useState(false);
   const game = useGameStore((s) => s.game);
 
-  useGameSocket(gameId);
+  useGameSocket(gameId, Boolean(user));
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/auth');
+    }
+  }, [loading, router, user]);
 
   const startGame = async () => {
-    const res = await createAIGame(level, selected.code);
-    setGameId(res.id);
+    setStatus('');
+    setStarting(true);
+    try {
+      const res = await createAIGame(level, selected.code);
+      setGameId(res.id);
+    } catch (err: any) {
+      setStatus(err?.response?.data?.message || 'Failed to start game');
+    } finally {
+      setStarting(false);
+    }
   };
+
+  if (loading || (!loading && !user)) {
+    return (
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-100">
+        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -77,10 +105,12 @@ export default function AIPlayPage() {
 
             <button
               onClick={startGame}
+              disabled={starting}
               className="mt-6 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-glow"
             >
-              <Play className="h-4 w-4" /> Start training game
+              {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Start training game
             </button>
+            {status ? <div className="mt-3 text-xs text-rose-300">{status}</div> : null}
           </div>
         )}
 

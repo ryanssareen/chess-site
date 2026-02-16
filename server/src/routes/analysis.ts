@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { engine } from '../services/chessEngine';
 import { Chess } from 'chess.js';
+import { requireTrainingUser } from '../middleware/auth';
+import { getRecentReviewGames } from '../services/chessComReview';
+import { config } from '../config';
+import { AuthedRequest } from '../types';
 
 const router = Router();
 
-router.post('/evaluate', async (req, res) => {
+router.post('/evaluate', requireTrainingUser, async (req, res) => {
   const { fen, depth = 12 } = req.body;
   if (!fen) return res.status(400).json({ message: 'fen required' });
   const result = await engine.bestMove(fen, depth);
@@ -22,6 +26,21 @@ router.post('/evaluate', async (req, res) => {
   };
 
   res.json({ ...result, bestLineSan: toSanLine(fen, result.bestLine) });
+});
+
+router.get('/review-games', requireTrainingUser, async (req: AuthedRequest, res) => {
+  const limit = Math.max(1, Math.min(50, parseInt(String(req.query.limit || 12), 10) || 12));
+
+  try {
+    const games = await getRecentReviewGames(limit);
+    res.json({
+      username: config.chessComUsername,
+      games
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(502).json({ message: `Failed to load Chess.com games: ${message}` });
+  }
 });
 
 export default router;

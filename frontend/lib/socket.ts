@@ -8,11 +8,11 @@ const SOCKET_URL = rawBase.replace(/\/$/, '');
 
 function authPayload() {
   if (typeof window === 'undefined') return {};
-  const raw = window.localStorage.getItem('guest');
+  const raw = window.localStorage.getItem('auth_user');
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
-    return { userId: parsed.id, username: parsed.username };
+    return { token: parsed.token, userId: parsed.id, username: parsed.username };
   } catch (err) {
     return {};
   }

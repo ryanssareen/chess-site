@@ -1,18 +1,61 @@
 import { Server } from 'socket.io';
-import { getGame, handleMove, createGame } from './gameService';
-import { nanoid } from 'nanoid';
+import { getGame, handleMove } from './gameService';
+import { verifyAuthToken } from './jwt';
+import { prisma } from '../db';
+import { config } from '../config';
 
 export function setupSocket(io: Server) {
-  const waiting: Record<string, { socketId: string; user: { id: string; username: string; rating: number } } | null> = {};
+  io.use((socket, next) => {
+    const rawToken = socket.handshake.auth?.token;
+    const token = typeof rawToken === 'string' ? rawToken : '';
+    if (!token) {
+      return next(new Error('Missing auth token'));
+    }
 
-  io.on('connection', (socket) => {
-    const user = { id: socket.handshake.auth?.userId || nanoid(), username: socket.handshake.auth?.username || 'Guest', rating: 1500 };
+    try {
+      const payload = verifyAuthToken(token);
+      socket.data.userId = payload.userId;
+      return next();
+    } catch (err) {
+      return next(new Error('Invalid auth token'));
+    }
+  });
+
+  io.on('connection', async (socket) => {
+    const userId = String(socket.data.userId || '');
+    if (!userId) {
+      socket.disconnect(true);
+      return;
+    }
+
+    let user: { id: string; username: string; rating: number } | null = null;
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, username: true, rating: true }
+      });
+      if (!user || user.username.trim().toLowerCase() !== config.trainingUsername) {
+        socket.emit('status', { message: 'Access denied: training account required.' });
+        socket.disconnect(true);
+        return;
+      }
+    } catch (err) {
+      socket.emit('status', { message: 'Failed to load user session' });
+      socket.disconnect(true);
+      return;
+    }
+    const sessionUser = user;
+    if (!sessionUser) {
+      socket.disconnect(true);
+      return;
+    }
 
     socket.on('joinGame', ({ gameId }) => {
       socket.join(gameId);
       const game = getGame(gameId);
       if (game) {
-        const perspective = user.id === game.white.id ? 'white' : user.id === game.black.id ? 'black' : undefined;
+        const perspective =
+          sessionUser.id === game.white.id ? 'white' : sessionUser.id === game.black.id ? 'black' : undefined;
         socket.emit('game', { ...game, perspective });
       }
     });
@@ -20,7 +63,7 @@ export function setupSocket(io: Server) {
     socket.on('leaveGame', ({ gameId }) => socket.leave(gameId));
 
     socket.on('move', async ({ gameId, from, to, promotion }) => {
-      const { game, error, aiMove } = await handleMove(gameId, { from, to, promotion }, user.id);
+      const { game, error, aiMove } = await handleMove(gameId, { from, to, promotion }, sessionUser.id);
       if (error) return socket.emit('status', { message: error });
       if (game) {
         io.to(gameId).emit('move', { ...game.moves[game.moves.length - 1], clocks: game.clocks, lastMoveAt: game.lastMoveAt });
@@ -34,23 +77,8 @@ export function setupSocket(io: Server) {
       }
     });
 
-    socket.on('queue', ({ timeControl, rated }) => {
-      const existing = waiting[timeControl];
-      if (existing) {
-        const whiteFirst = Math.random() > 0.5;
-        const game = createGame(whiteFirst ? existing.user : user, whiteFirst ? user : existing.user, timeControl, rated);
-        const otherSocket = io.sockets.sockets.get(existing.socketId);
-        socket.join(game.id);
-        otherSocket?.join(game.id);
-        const yourColor = game.white.id === user.id ? 'white' : 'black';
-        const theirColor = game.white.id === existing.user.id ? 'white' : 'black';
-        socket.emit('game', { ...game, perspective: yourColor });
-        otherSocket?.emit('game', { ...game, perspective: theirColor });
-        waiting[timeControl] = null;
-      } else {
-        waiting[timeControl] = { socketId: socket.id, user };
-        socket.emit('status', { message: 'Waiting for opponent...' });
-      }
+    socket.on('queue', () => {
+      socket.emit('status', { message: 'Online matchmaking is disabled for this training-only platform.' });
     });
   });
 }
