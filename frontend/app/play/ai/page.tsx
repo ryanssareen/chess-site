@@ -10,6 +10,7 @@ import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
 import { TimerBar } from '@/components/TimerBar';
 import { GameHeader } from '@/components/GameHeader';
+import { EvalBar } from '@/components/EvalBar';
 import { Cpu, Loader2, Play } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { GameState } from '@/types';
@@ -29,6 +30,11 @@ function finishedResult(board: Chess) {
   return '1/2-1/2';
 }
 
+function consumeClock(currentMs: number, elapsedMs: number, incrementSeconds: number) {
+  const incrementMs = Math.max(0, incrementSeconds * 1000);
+  return Math.max(0, currentMs - Math.max(0, elapsedMs) + incrementMs);
+}
+
 export default function AIPlayPage() {
   const { user, loading } = useAuth();
   const [selected, setSelected] = useState(TIME_CONTROLS[3]);
@@ -42,6 +48,9 @@ export default function AIPlayPage() {
   const [engineError, setEngineError] = useState<string>('');
   const [engineSource, setEngineSource] = useState<string>('');
   const [aiThinking, setAiThinking] = useState(false);
+  const [evalScore, setEvalScore] = useState<string>('0.00');
+  const [evalLoading, setEvalLoading] = useState(false);
+
   const socketGame = useGameStore((s) => s.game);
   const game = useMemo(() => (FRONTEND_ONLY ? localGame : socketGame), [localGame, socketGame]);
 
@@ -124,6 +133,20 @@ export default function AIPlayPage() {
             return current;
           }
 
+          const movedAt = Date.now();
+          const elapsed = Math.max(0, movedAt - (current.lastMoveAt || movedAt));
+          const blackClock = consumeClock(current.clocks.black, elapsed, current.timeControl.increment);
+
+          if (blackClock <= 0) {
+            return {
+              ...current,
+              clocks: { ...current.clocks, black: 0 },
+              lastMoveAt: movedAt,
+              status: 'finished',
+              result: '1-0'
+            };
+          }
+
           const board = new Chess(current.fen);
           const aiPlayed = board.move({
             from: bestMove.from,
@@ -137,7 +160,11 @@ export default function AIPlayPage() {
             fen: board.fen(),
             pgn: board.pgn(),
             turn: board.turn(),
-            lastMoveAt: Date.now(),
+            lastMoveAt: movedAt,
+            clocks: {
+              ...current.clocks,
+              black: blackClock
+            },
             moves: [
               ...current.moves,
               {
@@ -175,9 +202,41 @@ export default function AIPlayPage() {
     };
   }, [engineError, engineReady, game]);
 
+  useEffect(() => {
+    if (!FRONTEND_ONLY || !game || game.status !== 'active' || game.turn !== 'w') {
+      setEvalLoading(false);
+      return;
+    }
+    if (!engineReady || !!engineError || !engineRef.current) return;
+    if (aiThinkingRef.current) return;
+
+    let active = true;
+    setEvalLoading(true);
+
+    engineRef.current
+      .evaluatePosition(game.fen, 12)
+      .then((result) => {
+        if (!active) return;
+        setEvalScore(result.score || '0.00');
+      })
+      .catch((_err) => {
+        if (!active) return;
+        setEvalScore('0.00');
+      })
+      .finally(() => {
+        if (!active) return;
+        setEvalLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [engineError, engineReady, game]);
+
   const startGame = async () => {
     setStatus('');
     setStarting(true);
+    setEvalScore('0.00');
     try {
       const res = await createAIGame(level, selected.code);
       if (FRONTEND_ONLY) {
@@ -198,6 +257,20 @@ export default function AIPlayPage() {
     setLocalGame((current) => {
       if (!current || current.status !== 'active' || current.turn !== 'w') return current;
 
+      const movedAt = Date.now();
+      const elapsed = Math.max(0, movedAt - (current.lastMoveAt || movedAt));
+      const whiteClock = consumeClock(current.clocks.white, elapsed, current.timeControl.increment);
+
+      if (whiteClock <= 0) {
+        return {
+          ...current,
+          clocks: { ...current.clocks, white: 0 },
+          lastMoveAt: movedAt,
+          status: 'finished',
+          result: '0-1'
+        };
+      }
+
       const board = new Chess(current.fen);
       const played = board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
       if (!played) return current;
@@ -207,7 +280,11 @@ export default function AIPlayPage() {
         fen: board.fen(),
         pgn: board.pgn(),
         turn: board.turn(),
-        lastMoveAt: Date.now(),
+        lastMoveAt: movedAt,
+        clocks: {
+          ...current.clocks,
+          white: whiteClock
+        },
         moves: [
           ...current.moves,
           {
@@ -329,17 +406,25 @@ export default function AIPlayPage() {
         {game && (
           <div className="space-y-4">
             <GameHeader game={game} />
-            <ChessBoard
-              game={game}
-              meColor={game.perspective || 'white'}
-              allowMoves={
-                game.status === 'active' && (!FRONTEND_ONLY || (game.turn === 'w' && !aiThinking && !engineError))
-              }
-              onMove={FRONTEND_ONLY ? handleLocalMove : undefined}
-            />
+            <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+              <EvalBar score={evalScore} perspective={game.perspective || 'white'} />
+              <ChessBoard
+                game={game}
+                meColor={game.perspective || 'white'}
+                allowMoves={
+                  game.status === 'active' && (!FRONTEND_ONLY || (game.turn === 'w' && !aiThinking && !engineError))
+                }
+                onMove={FRONTEND_ONLY ? handleLocalMove : undefined}
+              />
+            </div>
             {FRONTEND_ONLY && game.status === 'active' && game.turn === 'b' ? (
               <div className="rounded-2xl border border-white/5 bg-white/5 p-3 text-xs text-slate-300">
                 {aiThinking ? 'Stockfish is thinking...' : 'Waiting for Stockfish response...'}
+              </div>
+            ) : null}
+            {FRONTEND_ONLY && game.status === 'active' && game.turn === 'w' && evalLoading ? (
+              <div className="rounded-2xl border border-white/5 bg-white/5 p-3 text-xs text-slate-300">
+                Updating eval bar...
               </div>
             ) : null}
           </div>
@@ -349,8 +434,18 @@ export default function AIPlayPage() {
       <div className="space-y-4">
         {game ? (
           <>
-            <TimerBar value={game.clocks.white} active={game.turn === 'w'} lastMoveAt={game.lastMoveAt} />
-            <TimerBar value={game.clocks.black} active={game.turn === 'b'} lastMoveAt={game.lastMoveAt} />
+            <TimerBar
+              value={game.clocks.white}
+              active={game.turn === 'w'}
+              lastMoveAt={game.lastMoveAt}
+              label={game.players.white.username}
+            />
+            <TimerBar
+              value={game.clocks.black}
+              active={game.turn === 'b'}
+              lastMoveAt={game.lastMoveAt}
+              label={game.players.black.username}
+            />
             <MoveList moves={game.moves} />
             {game.result ? (
               <div className="rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-slate-100">

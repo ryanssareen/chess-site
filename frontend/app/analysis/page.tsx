@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
+import { EvalBar } from '@/components/EvalBar';
 import { GameState, ReviewGame } from '@/types';
 import { api, fetchReviewGames, isFrontendOnlyMode } from '@/lib/api';
 import { LineChart, Loader2, RefreshCcw, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react';
@@ -284,7 +285,10 @@ export default function AnalysisPage() {
       <div className="space-y-4">
         {selectedGame ? (
           <>
-            <ChessBoard game={boardGame} meColor={selectedGame.asColor} allowMoves={false} />
+            <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
+              <EvalBar score={evalScore} perspective={selectedGame.asColor} />
+              <ChessBoard game={boardGame} meColor={selectedGame.asColor} allowMoves={false} />
+            </div>
             <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <button
