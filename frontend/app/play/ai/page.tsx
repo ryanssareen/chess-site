@@ -35,10 +35,29 @@ function consumeClock(currentMs: number, elapsedMs: number, incrementSeconds: nu
   return Math.max(0, currentMs - Math.max(0, elapsedMs) + incrementMs);
 }
 
+function invertScore(score: string) {
+  const trimmed = (score || '').trim();
+  if (!trimmed) return '0.00';
+
+  if (trimmed.includes('M')) {
+    const sign = trimmed.startsWith('-') ? -1 : 1;
+    const abs = trimmed.replace(/^[+-]/, '');
+    return `${sign > 0 ? '-' : ''}${abs}`;
+  }
+
+  const numeric = Number(trimmed);
+  if (!Number.isFinite(numeric)) return '0.00';
+  return (-numeric).toFixed(2);
+}
+
+function scoreToWhitePerspective(score: string, sideToMove: 'w' | 'b') {
+  return sideToMove === 'w' ? score : invertScore(score);
+}
+
 export default function AIPlayPage() {
   const { user, loading } = useAuth();
   const [selected, setSelected] = useState(TIME_CONTROLS[3]);
-  const [level, setLevel] = useState(4);
+  const [level, setLevel] = useState(10);
   const [gameId, setGameId] = useState<string>();
   const [status, setStatus] = useState<string>('');
   const [starting, setStarting] = useState(false);
@@ -203,7 +222,7 @@ export default function AIPlayPage() {
   }, [engineError, engineReady, game]);
 
   useEffect(() => {
-    if (!FRONTEND_ONLY || !game || game.status !== 'active' || game.turn !== 'w') {
+    if (!FRONTEND_ONLY || !game || game.status !== 'active') {
       setEvalLoading(false);
       return;
     }
@@ -217,7 +236,7 @@ export default function AIPlayPage() {
       .evaluatePosition(game.fen, 12)
       .then((result) => {
         if (!active) return;
-        setEvalScore(result.score || '0.00');
+        setEvalScore(scoreToWhitePerspective(result.score || '0.00', game.turn));
       })
       .catch((_err) => {
         if (!active) return;

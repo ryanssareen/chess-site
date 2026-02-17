@@ -47,6 +47,49 @@ function uciLineToSanLine(startFen: string, line: string) {
   return sanMoves.join(' ');
 }
 
+function invertScore(score: string) {
+  const trimmed = (score || '').trim();
+  if (!trimmed) return '0.00';
+
+  if (trimmed.includes('M')) {
+    const sign = trimmed.startsWith('-') ? -1 : 1;
+    const abs = trimmed.replace(/^[+-]/, '');
+    return `${sign > 0 ? '-' : ''}${abs}`;
+  }
+
+  const numeric = Number(trimmed);
+  if (!Number.isFinite(numeric)) return '0.00';
+  return (-numeric).toFixed(2);
+}
+
+function scoreToWhitePerspective(score: string, sideToMove: 'w' | 'b') {
+  return sideToMove === 'w' ? score : invertScore(score);
+}
+
+function scoreToCp(score: string) {
+  const trimmed = (score || '').trim();
+  if (!trimmed) return 0;
+
+  if (trimmed.includes('M')) {
+    const sign = trimmed.startsWith('-') ? -1 : 1;
+    return sign * 10000;
+  }
+
+  const numeric = Number(trimmed);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round(numeric * 100);
+}
+
+function formatPawnDelta(cp: number) {
+  return Math.abs(cp / 100).toFixed(2);
+}
+
+function normalizeUci(from: string, to: string, san: string) {
+  const promotionMatch = san.match(/=([QRBN])/i);
+  const promo = promotionMatch?.[1]?.toLowerCase() || '';
+  return `${from}${to}${promo}`;
+}
+
 export default function AnalysisPage() {
   const { user, loading } = useAuth();
   const [games, setGames] = useState<ReviewGame[]>([]);
@@ -59,6 +102,8 @@ export default function AnalysisPage() {
   const [bestLineSan, setBestLineSan] = useState('');
   const [evalScore, setEvalScore] = useState('');
   const [evaluating, setEvaluating] = useState(false);
+  const [coachAdvice, setCoachAdvice] = useState('Select a game and move to get coach advice.');
+  const [coachLoading, setCoachLoading] = useState(false);
   const [engineReady, setEngineReady] = useState(!FRONTEND_ONLY);
   const [engineError, setEngineError] = useState('');
   const [engineSource, setEngineSource] = useState('');
@@ -118,6 +163,8 @@ export default function AnalysisPage() {
     setBestLine('');
     setBestLineSan('');
     setEvalScore('');
+    setCoachAdvice('Step through the game to get coach advice for each position.');
+    setCoachLoading(false);
   }, [selectedGameId]);
 
   const selectedGame = useMemo(
@@ -154,6 +201,97 @@ export default function AnalysisPage() {
     [currentFen, ply, selectedGame, user?.id, user?.username, visibleMoves]
   );
 
+  useEffect(() => {
+    if (!selectedGame) return;
+
+    const upcomingMove = selectedGame.moves[ply];
+    if (!upcomingMove) {
+      setCoachLoading(false);
+      setCoachAdvice('End of game reached. Step back one move to get advice for a played move.');
+      return;
+    }
+
+    if (!FRONTEND_ONLY) {
+      setCoachLoading(false);
+      setCoachAdvice('Click "Evaluate position" to fetch coach advice from engine analysis.');
+      return;
+    }
+
+    if (!engineReady || !engineRef.current) {
+      setCoachLoading(false);
+      setCoachAdvice(engineError || 'Loading Stockfish for coach advice...');
+      return;
+    }
+
+    let active = true;
+    setCoachLoading(true);
+
+    const mover = boardGame.turn;
+    const nextTurn = mover === 'w' ? 'b' : 'w';
+    const playedUci = normalizeUci(upcomingMove.from, upcomingMove.to, upcomingMove.san);
+
+    (async () => {
+      try {
+        const currentEval = await engineRef.current!.evaluatePosition(currentFen, 14);
+        if (!active) return;
+
+        const rawCurrentScore = currentEval.score || '0.00';
+        const currentWhiteScore = scoreToWhitePerspective(rawCurrentScore, mover);
+        const bestUci = (currentEval.bestLineUci || '').split(/\s+/).filter(Boolean)[0] || currentEval.bestMove?.uci || '';
+        const bestLineSanText = uciLineToSanLine(currentFen, currentEval.bestLineUci || '');
+
+        setEvalScore(currentWhiteScore);
+        setBestLine(currentEval.bestLineUci || bestUci || '');
+        setBestLineSan(bestLineSanText);
+
+        const afterEval = await engineRef.current!.evaluatePosition(upcomingMove.fen, 12);
+        if (!active) return;
+
+        const afterWhiteScore = scoreToWhitePerspective(afterEval.score || '0.00', nextTurn);
+        const whiteDeltaCp = scoreToCp(afterWhiteScore) - scoreToCp(currentWhiteScore);
+        const moverDeltaCp = mover === 'w' ? whiteDeltaCp : -whiteDeltaCp;
+        const matchedTopMove = Boolean(bestUci) && bestUci.startsWith(playedUci);
+        const bestHint = bestLineSanText || bestUci || 'the top Stockfish move';
+
+        if (matchedTopMove) {
+          setCoachAdvice(`Coach: Great move. ${upcomingMove.san} matches Stockfish's top line (${bestHint}).`);
+          return;
+        }
+
+        if (moverDeltaCp <= -200) {
+          setCoachAdvice(
+            `Coach: ${upcomingMove.san} is a major mistake (about ${formatPawnDelta(moverDeltaCp)} pawns lost). Stockfish preferred ${bestHint}.`
+          );
+          return;
+        }
+
+        if (moverDeltaCp <= -80) {
+          setCoachAdvice(
+            `Coach: ${upcomingMove.san} is an inaccuracy (about ${formatPawnDelta(moverDeltaCp)} pawns lost). Stronger was ${bestHint}.`
+          );
+          return;
+        }
+
+        if (moverDeltaCp >= 80) {
+          setCoachAdvice(`Coach: Nice practical move ${upcomingMove.san}. It improved your position by about ${formatPawnDelta(moverDeltaCp)} pawns.`);
+          return;
+        }
+
+        setCoachAdvice(`Coach: ${upcomingMove.san} is playable. Stockfish still prefers ${bestHint}.`);
+      } catch (err: any) {
+        if (!active) return;
+        setCoachAdvice(err?.message || 'Coach advice unavailable for this position.');
+      } finally {
+        if (!active) return;
+        setCoachLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [boardGame.turn, currentFen, engineError, engineReady, ply, selectedGame]);
+
   const requestEval = async () => {
     if (!selectedGame) return;
     setEvaluating(true);
@@ -173,7 +311,7 @@ export default function AnalysisPage() {
         const sanLine = uciLineToSanLine(currentFen, result.bestLineUci);
         setBestLine(result.bestLineUci || (result.bestMove?.uci || 'No line returned'));
         setBestLineSan(sanLine || '');
-        setEvalScore(result.score || '');
+        setEvalScore(scoreToWhitePerspective(result.score || '0.00', boardGame.turn));
       } catch (err: any) {
         setBestLine(err?.message || 'Evaluation failed for this position');
         setBestLineSan('');
@@ -188,7 +326,7 @@ export default function AnalysisPage() {
       const res = await api.post('/analysis/evaluate', { fen: currentFen, depth: 14 });
       setBestLine(res.data.bestLine);
       setBestLineSan(res.data.bestLineSan || '');
-      setEvalScore(res.data.score);
+      setEvalScore(scoreToWhitePerspective(res.data.score || '0.00', boardGame.turn));
     } catch (err: any) {
       setBestLine(err?.response?.data?.message || 'Evaluation failed for this position');
       setBestLineSan('');
@@ -333,7 +471,16 @@ export default function AnalysisPage() {
             <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
               <MoveList moves={selectedGame.moves} />
               <div className="rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-slate-100">
-                <div className="text-xs uppercase tracking-wide text-slate-400">Engine suggestion</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">Coach advice</div>
+                {coachLoading ? (
+                  <div className="mt-2 inline-flex items-center gap-2 text-slate-300">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Analyzing this position...
+                  </div>
+                ) : (
+                  <div className="mt-2 text-slate-100">{coachAdvice}</div>
+                )}
+                <div className="mt-4 text-xs uppercase tracking-wide text-slate-400">Engine suggestion</div>
                 <div className="mt-2 font-semibold text-white">{bestLineSan || bestLine || 'Run evaluation for this position'}</div>
                 {evalScore ? <div className="mt-2 text-slate-300">Eval: {evalScore}</div> : null}
                 <div className="mt-4 text-xs text-slate-400">Current FEN: {currentFen}</div>

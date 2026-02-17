@@ -16,30 +16,21 @@ const LOCAL_STOCKFISH_BASE = '/stockfish';
 const CDN_STOCKFISH_BASE = 'https://cdn.jsdelivr.net/npm/stockfish@16.0.0/src';
 
 const LEVEL_DEPTH: Record<number, number> = {
-  1: 3,
-  2: 6,
-  4: 10,
+  1: 8,
+  2: 10,
+  4: 12,
   6: 14,
-  8: 18,
-  10: 20
+  8: 16,
+  10: 18
 };
 
-const LEVEL_SKILL: Record<number, number> = {
-  1: 0,
-  2: 4,
-  4: 8,
-  6: 12,
-  8: 18,
-  10: 20
-};
-
-const LEVEL_ELO: Record<number, number> = {
-  1: 700,
-  2: 1000,
-  4: 1400,
-  6: 1800,
-  8: 2300,
-  10: 2900
+const LEVEL_MOVETIME_MS: Record<number, number> = {
+  1: 350,
+  2: 550,
+  4: 900,
+  6: 1300,
+  8: 1800,
+  10: 2400
 };
 
 type SearchResult = {
@@ -124,14 +115,12 @@ export class StockfishClient {
     await this.readyPromise;
 
     const depth = valueForLevel(level, LEVEL_DEPTH);
-    const skill = valueForLevel(level, LEVEL_SKILL);
-    const elo = valueForLevel(level, LEVEL_ELO);
+    const movetimeMs = valueForLevel(level, LEVEL_MOVETIME_MS);
     const result = await this.runSearch({
       fen,
       depth,
-      limitStrength: level < 8,
-      skill,
-      elo
+      limitStrength: false,
+      movetimeMs
     });
 
     if (!result.move) {
@@ -257,6 +246,7 @@ export class StockfishClient {
     limitStrength: boolean;
     skill?: number;
     elo?: number;
+    movetimeMs?: number;
   }) {
     if (!this.worker || !this.ready) {
       throw new Error('Stockfish is not ready');
@@ -288,7 +278,11 @@ export class StockfishClient {
       this.send('setoption name MultiPV value 1');
       this.send('ucinewgame');
       this.send(`position fen ${params.fen}`);
-      this.send(`go depth ${params.depth}`);
+      if (typeof params.movetimeMs === 'number') {
+        this.send(`go depth ${params.depth} movetime ${Math.max(150, Math.floor(params.movetimeMs))}`);
+      } else {
+        this.send(`go depth ${params.depth}`);
+      }
     });
   }
 
