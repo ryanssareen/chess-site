@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Chess } from 'chess.js';
 import { TIME_CONTROLS } from '@/lib/timeControls';
@@ -13,26 +13,10 @@ import { GameHeader } from '@/components/GameHeader';
 import { Cpu, Loader2, Play } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { GameState } from '@/types';
+import { StockfishClient } from '@/lib/stockfish';
 
 const LEVELS = [1, 2, 4, 6, 8, 10];
 const FRONTEND_ONLY = isFrontendOnlyMode();
-const PIECE_VALUES: Record<string, number> = {
-  p: 100,
-  n: 320,
-  b: 330,
-  r: 500,
-  q: 900,
-  k: 0
-};
-
-type VerboseMove = {
-  from: string;
-  to: string;
-  promotion?: string;
-  san: string;
-  color: 'w' | 'b';
-  flags: string;
-};
 
 function finishedResult(board: Chess) {
   if (!board.isGameOver()) return undefined;
@@ -45,121 +29,6 @@ function finishedResult(board: Chess) {
   return '1/2-1/2';
 }
 
-function terminalScore(board: Chess, aiColor: 'w' | 'b', depth: number) {
-  if (board.isCheckmate()) {
-    return board.turn() === aiColor ? -100000 - depth : 100000 + depth;
-  }
-  if (board.isDraw()) return 0;
-  return null;
-}
-
-function evaluateBoard(board: Chess, aiColor: 'w' | 'b') {
-  const rows = board.board();
-  let score = 0;
-
-  rows.forEach((row) => {
-    row.forEach((piece) => {
-      if (!piece) return;
-      const value = PIECE_VALUES[piece.type] || 0;
-      score += piece.color === aiColor ? value : -value;
-    });
-  });
-
-  const mobility = board.moves().length;
-  score += board.turn() === aiColor ? mobility : -mobility;
-  return score;
-}
-
-function tacticalWeight(move: VerboseMove) {
-  let weight = 0;
-  if (move.flags.includes('c') || move.flags.includes('e')) weight += 30;
-  if (move.flags.includes('p')) weight += 20;
-  if (move.san.includes('+')) weight += 10;
-  if (move.san.includes('#')) weight += 1000;
-  return weight;
-}
-
-function orderMoves(moves: VerboseMove[]) {
-  return [...moves].sort((a, b) => tacticalWeight(b) - tacticalWeight(a));
-}
-
-function minimax(
-  board: Chess,
-  depth: number,
-  alpha: number,
-  beta: number,
-  maximizing: boolean,
-  aiColor: 'w' | 'b'
-): number {
-  const terminal = terminalScore(board, aiColor, depth);
-  if (terminal !== null) return terminal;
-  if (depth === 0) return evaluateBoard(board, aiColor);
-
-  const legalMoves = orderMoves(board.moves({ verbose: true }) as unknown as VerboseMove[]);
-  if (legalMoves.length === 0) return evaluateBoard(board, aiColor);
-
-  if (maximizing) {
-    let best = -Infinity;
-    for (const move of legalMoves) {
-      board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
-      const score = minimax(board, depth - 1, alpha, beta, false, aiColor);
-      board.undo();
-      if (score > best) best = score;
-      if (score > alpha) alpha = score;
-      if (beta <= alpha) break;
-    }
-    return best;
-  }
-
-  let best = Infinity;
-  for (const move of legalMoves) {
-    board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
-    const score = minimax(board, depth - 1, alpha, beta, true, aiColor);
-    board.undo();
-    if (score < best) best = score;
-    if (score < beta) beta = score;
-    if (beta <= alpha) break;
-  }
-  return best;
-}
-
-function searchAIMove(board: Chess, level: number, aiColor: 'w' | 'b') {
-  const legalMoves = orderMoves(board.moves({ verbose: true }) as unknown as VerboseMove[]);
-  if (legalMoves.length === 0) return null;
-
-  if (level <= 2) {
-    return legalMoves[Math.floor(Math.random() * legalMoves.length)];
-  }
-
-  const depth = level >= 10 ? 4 : level >= 8 ? 3 : level >= 6 ? 3 : level >= 4 ? 2 : 1;
-  let bestScore = -Infinity;
-  let bestMoves: VerboseMove[] = [];
-
-  for (const move of legalMoves) {
-    board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
-    const score = minimax(board, depth - 1, -Infinity, Infinity, false, aiColor);
-    board.undo();
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestMoves = [move];
-    } else if (score === bestScore) {
-      bestMoves.push(move);
-    }
-  }
-
-  if (bestMoves.length === 0) {
-    return legalMoves[0];
-  }
-
-  if (level <= 4) {
-    const topSlice = bestMoves.slice(0, Math.min(3, bestMoves.length));
-    return topSlice[Math.floor(Math.random() * topSlice.length)];
-  }
-
-  return bestMoves[0];
-}
-
 export default function AIPlayPage() {
   const { user, loading } = useAuth();
   const [selected, setSelected] = useState(TIME_CONTROLS[3]);
@@ -169,10 +38,50 @@ export default function AIPlayPage() {
   const [starting, setStarting] = useState(false);
   const [localGame, setLocalGame] = useState<GameState>();
   const [savedLocalGames, setSavedLocalGames] = useState<string[]>([]);
+  const [engineReady, setEngineReady] = useState(!FRONTEND_ONLY);
+  const [engineError, setEngineError] = useState<string>('');
+  const [aiThinking, setAiThinking] = useState(false);
   const socketGame = useGameStore((s) => s.game);
   const game = useMemo(() => (FRONTEND_ONLY ? localGame : socketGame), [localGame, socketGame]);
 
+  const engineRef = useRef<StockfishClient | null>(null);
+  const aiThinkingRef = useRef(false);
+  const levelRef = useRef(level);
+
   useGameSocket(gameId, Boolean(user) && !FRONTEND_ONLY);
+
+  useEffect(() => {
+    levelRef.current = level;
+  }, [level]);
+
+  useEffect(() => {
+    if (!FRONTEND_ONLY) return;
+
+    const engine = new StockfishClient();
+    engineRef.current = engine;
+    let active = true;
+
+    engine
+      .ready()
+      .then(() => {
+        if (!active) return;
+        setEngineReady(true);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        const message = err instanceof Error ? err.message : 'Failed to initialize Stockfish';
+        setEngineError(message);
+      });
+
+    return () => {
+      active = false;
+      aiThinkingRef.current = false;
+      engine.destroy();
+      if (engineRef.current === engine) {
+        engineRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!FRONTEND_ONLY || !game || game.status !== 'finished' || !user) return;
@@ -190,6 +99,79 @@ export default function AIPlayPage() {
     });
     setSavedLocalGames((current) => [...current, game.id]);
   }, [game, savedLocalGames, user]);
+
+  useEffect(() => {
+    if (!FRONTEND_ONLY || !game || game.status !== 'active' || game.turn !== 'b') return;
+    if (!engineReady || engineError) return;
+    if (aiThinkingRef.current) return;
+    if (!engineRef.current) return;
+
+    const expectedFen = game.fen;
+    const engine = engineRef.current;
+    let active = true;
+    aiThinkingRef.current = true;
+    setAiThinking(true);
+
+    engine
+      .bestMove(expectedFen, levelRef.current)
+      .then((bestMove) => {
+        if (!active) return;
+
+        setLocalGame((current) => {
+          if (!current || current.status !== 'active' || current.turn !== 'b' || current.fen !== expectedFen) {
+            return current;
+          }
+
+          const board = new Chess(current.fen);
+          const aiPlayed = board.move({
+            from: bestMove.from,
+            to: bestMove.to,
+            promotion: bestMove.promotion || 'q'
+          });
+          if (!aiPlayed) return current;
+
+          const updated: GameState = {
+            ...current,
+            fen: board.fen(),
+            pgn: board.pgn(),
+            turn: board.turn(),
+            lastMoveAt: Date.now(),
+            moves: [
+              ...current.moves,
+              {
+                san: aiPlayed.san,
+                from: aiPlayed.from,
+                to: aiPlayed.to,
+                fen: board.fen(),
+                moveNumber: current.moves.length + 1,
+                player: aiPlayed.color === 'w' ? 'white' : 'black'
+              }
+            ]
+          };
+
+          const result = finishedResult(board);
+          if (result) {
+            return { ...updated, status: 'finished', result };
+          }
+
+          return updated;
+        });
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        const message = err instanceof Error ? err.message : 'Stockfish failed to generate a move';
+        setStatus(message);
+      })
+      .finally(() => {
+        aiThinkingRef.current = false;
+        if (!active) return;
+        setAiThinking(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [engineError, engineReady, game]);
 
   const startGame = async () => {
     setStatus('');
@@ -212,13 +194,13 @@ export default function AIPlayPage() {
     if (!FRONTEND_ONLY) return;
 
     setLocalGame((current) => {
-      if (!current || current.status !== 'active') return current;
+      if (!current || current.status !== 'active' || current.turn !== 'w') return current;
 
       const board = new Chess(current.fen);
       const played = board.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
       if (!played) return current;
 
-      let updated: GameState = {
+      const updated: GameState = {
         ...current,
         fen: board.fen(),
         pgn: board.pgn(),
@@ -237,47 +219,9 @@ export default function AIPlayPage() {
         ]
       };
 
-      const firstResult = finishedResult(board);
-      if (firstResult) {
-        return { ...updated, status: 'finished', result: firstResult };
-      }
-
-      if (board.turn() !== 'b') return updated;
-
-      const aiChoice = searchAIMove(board, level, 'b');
-      if (!aiChoice) {
-        return { ...updated, status: 'finished', result: '1/2-1/2' };
-      }
-
-      const aiPlayed = board.move({
-        from: aiChoice.from,
-        to: aiChoice.to,
-        promotion: aiChoice.promotion || 'q'
-      });
-      if (!aiPlayed) return updated;
-
-      updated = {
-        ...updated,
-        fen: board.fen(),
-        pgn: board.pgn(),
-        turn: board.turn(),
-        lastMoveAt: Date.now(),
-        moves: [
-          ...updated.moves,
-          {
-            san: aiPlayed.san,
-            from: aiPlayed.from,
-            to: aiPlayed.to,
-            fen: board.fen(),
-            moveNumber: updated.moves.length + 1,
-            player: aiPlayed.color === 'w' ? 'white' : 'black'
-          }
-        ]
-      };
-
-      const secondResult = finishedResult(board);
-      if (secondResult) {
-        return { ...updated, status: 'finished', result: secondResult };
+      const result = finishedResult(board);
+      if (result) {
+        return { ...updated, status: 'finished', result };
       }
 
       return updated;
@@ -320,9 +264,13 @@ export default function AIPlayPage() {
             </p>
             {FRONTEND_ONLY ? (
               <p className="mt-2 text-xs text-amber-300">
-                Frontend-only mode is active. A local minimax engine is used while backend is offline.
+                Stockfish.js runs in-browser for frontend-only mode. No backend is required.
               </p>
             ) : null}
+            {!engineReady && FRONTEND_ONLY && !engineError ? (
+              <p className="mt-2 text-xs text-slate-300">Loading Stockfish engine...</p>
+            ) : null}
+            {engineError ? <p className="mt-2 text-xs text-rose-300">Stockfish error: {engineError}</p> : null}
             <div className="mt-4 grid grid-cols-2 gap-3">
               {TIME_CONTROLS.map((tc) => (
                 <button
@@ -364,8 +312,8 @@ export default function AIPlayPage() {
 
             <button
               onClick={startGame}
-              disabled={starting}
-              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-glow"
+              disabled={starting || (FRONTEND_ONLY && (!engineReady || Boolean(engineError)))}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
             >
               {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Start training game
             </button>
@@ -379,9 +327,16 @@ export default function AIPlayPage() {
             <ChessBoard
               game={game}
               meColor={game.perspective || 'white'}
-              allowMoves={game.status === 'active'}
+              allowMoves={
+                game.status === 'active' && (!FRONTEND_ONLY || (game.turn === 'w' && !aiThinking && !engineError))
+              }
               onMove={FRONTEND_ONLY ? handleLocalMove : undefined}
             />
+            {FRONTEND_ONLY && game.status === 'active' && game.turn === 'b' ? (
+              <div className="rounded-2xl border border-white/5 bg-white/5 p-3 text-xs text-slate-300">
+                {aiThinking ? 'Stockfish is thinking...' : 'Waiting for Stockfish response...'}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
