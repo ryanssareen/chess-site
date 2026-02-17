@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChessBoard } from '@/components/ChessBoard';
 import { MoveList } from '@/components/MoveList';
@@ -9,6 +9,7 @@ import { api, fetchReviewGames, isFrontendOnlyMode } from '@/lib/api';
 import { LineChart, Loader2, RefreshCcw, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Chess } from 'chess.js';
+import { StockfishClient } from '@/lib/stockfish';
 
 const FRONTEND_ONLY = isFrontendOnlyMode();
 const START_FEN = new Chess().fen();
@@ -19,23 +20,84 @@ function resultBadge(result: ReviewGame['userResult']) {
   return 'bg-rose-500/20 text-rose-300 border-rose-500/30';
 }
 
+function uciLineToSanLine(startFen: string, line: string) {
+  if (!line) return '';
+
+  const board = new Chess(startFen);
+  const sanMoves: string[] = [];
+
+  for (const rawMove of line.split(/\s+/).filter(Boolean)) {
+    const match = rawMove.match(/^([a-h][1-8])([a-h][1-8])([qrbn])?$/);
+    if (!match) break;
+
+    try {
+      const move = board.move({
+        from: match[1],
+        to: match[2],
+        promotion: (match[3] as 'q' | 'r' | 'b' | 'n' | undefined) || 'q'
+      });
+      if (!move) break;
+      sanMoves.push(move.san);
+    } catch (_err) {
+      break;
+    }
+  }
+
+  return sanMoves.join(' ');
+}
+
 export default function AnalysisPage() {
   const { user, loading } = useAuth();
   const [games, setGames] = useState<ReviewGame[]>([]);
   const [loadingGames, setLoadingGames] = useState(true);
   const [loadMessage, setLoadMessage] = useState('');
+  const [reviewUsername, setReviewUsername] = useState('');
   const [selectedGameId, setSelectedGameId] = useState<string>('');
   const [ply, setPly] = useState(0);
   const [bestLine, setBestLine] = useState('');
   const [bestLineSan, setBestLineSan] = useState('');
   const [evalScore, setEvalScore] = useState('');
   const [evaluating, setEvaluating] = useState(false);
+  const [engineReady, setEngineReady] = useState(!FRONTEND_ONLY);
+  const [engineError, setEngineError] = useState('');
+  const [engineSource, setEngineSource] = useState('');
+
+  const engineRef = useRef<StockfishClient | null>(null);
+
+  useEffect(() => {
+    if (!FRONTEND_ONLY) return;
+
+    const engine = new StockfishClient();
+    engineRef.current = engine;
+    let active = true;
+
+    engine
+      .readyState()
+      .then(() => {
+        if (!active) return;
+        setEngineReady(true);
+        setEngineSource(engine.getWorkerUrl());
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setEngineError(err instanceof Error ? err.message : 'Failed to initialize Stockfish');
+      });
+
+    return () => {
+      active = false;
+      engine.destroy();
+      if (engineRef.current === engine) {
+        engineRef.current = null;
+      }
+    };
+  }, []);
 
   const loadGames = useCallback(async () => {
     setLoadingGames(true);
     setLoadMessage('');
     try {
       const payload = await fetchReviewGames(16);
+      setReviewUsername(payload.username || '');
       setGames(payload.games || []);
       setSelectedGameId((current) => current || payload.games?.[0]?.id || '');
     } catch (err: any) {
@@ -63,7 +125,7 @@ export default function AnalysisPage() {
   );
   const totalMoves = selectedGame?.moves.length || 0;
   const currentFen = selectedGame ? (ply > 0 ? selectedGame.moves[ply - 1]?.fen || START_FEN : START_FEN) : START_FEN;
-  const visibleMoves = selectedGame ? selectedGame.moves.slice(0, ply) : [];
+  const visibleMoves = useMemo(() => (selectedGame ? selectedGame.moves.slice(0, ply) : []), [selectedGame, ply]);
 
   const boardGame: GameState = useMemo(
     () => ({
@@ -99,8 +161,25 @@ export default function AnalysisPage() {
     setEvalScore('');
 
     if (FRONTEND_ONLY) {
-      setBestLine('Engine eval is unavailable in frontend-only mode. Deploy backend to enable Stockfish analysis.');
-      setEvaluating(false);
+      if (!engineReady || !engineRef.current) {
+        setBestLine(engineError || 'Stockfish engine is still loading');
+        setEvaluating(false);
+        return;
+      }
+
+      try {
+        const result = await engineRef.current.evaluatePosition(currentFen, 16);
+        const sanLine = uciLineToSanLine(currentFen, result.bestLineUci);
+        setBestLine(result.bestLineUci || (result.bestMove?.uci || 'No line returned'));
+        setBestLineSan(sanLine || '');
+        setEvalScore(result.score || '');
+      } catch (err: any) {
+        setBestLine(err?.message || 'Evaluation failed for this position');
+        setBestLineSan('');
+        setEvalScore('');
+      } finally {
+        setEvaluating(false);
+      }
       return;
     }
 
@@ -164,7 +243,16 @@ export default function AnalysisPage() {
               <RefreshCcw size={12} /> Refresh
             </button>
           </div>
-          <p className="mt-2 text-xs text-slate-400">Recent real games for username: {user?.username || 'training-user'}</p>
+          <p className="mt-2 text-xs text-slate-400">
+            Recent real games for username: {reviewUsername || user?.username || 'training-user'}
+          </p>
+          {FRONTEND_ONLY && !engineReady && !engineError ? (
+            <p className="mt-2 text-xs text-slate-400">Loading Stockfish engine...</p>
+          ) : null}
+          {engineError ? <p className="mt-2 text-xs text-rose-300">Stockfish error: {engineError}</p> : null}
+          {engineReady && engineSource ? (
+            <p className="mt-2 break-all text-xs text-slate-500">Engine source: {engineSource}</p>
+          ) : null}
           <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
             {games.map((game) => (
               <button
@@ -228,7 +316,7 @@ export default function AnalysisPage() {
                 </button>
                 <button
                   onClick={requestEval}
-                  disabled={evaluating}
+                  disabled={evaluating || (FRONTEND_ONLY && !engineReady)}
                   className="ml-auto inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary to-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
                 >
                   {evaluating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}

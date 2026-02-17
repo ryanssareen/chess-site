@@ -371,10 +371,13 @@ export async function fetchReviewGames(limit = 12) {
     const username = normalizeUsername(CHESS_COM_USERNAME);
     const archivesResponse = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
     if (!archivesResponse.ok) {
-      throw new Error('Failed to load Chess.com archives');
+      throw new Error(`Chess.com archives request failed (${archivesResponse.status}) for ${username}`);
     }
     const archivesPayload = (await archivesResponse.json()) as { archives?: string[] };
-    const archiveUrls = [...(archivesPayload.archives || [])].slice(-3).reverse();
+    const archiveUrls = [...(archivesPayload.archives || [])].slice(-6).reverse();
+    if (archiveUrls.length === 0) {
+      throw new Error(`No Chess.com game archives found for ${username}`);
+    }
     const games: ChessComApiGame[] = [];
 
     for (const archiveUrl of archiveUrls) {
@@ -390,6 +393,10 @@ export async function fetchReviewGames(limit = 12) {
       .map((game, index) => toReviewGame(game, username, index))
       .filter((game): game is ReviewGame => Boolean(game))
       .slice(0, limit);
+
+    if (mapped.length === 0) {
+      throw new Error(`No reviewable games found for ${username} in recent archives`);
+    }
 
     return { username, games: mapped };
   }

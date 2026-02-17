@@ -40,6 +40,7 @@ export default function AIPlayPage() {
   const [savedLocalGames, setSavedLocalGames] = useState<string[]>([]);
   const [engineReady, setEngineReady] = useState(!FRONTEND_ONLY);
   const [engineError, setEngineError] = useState<string>('');
+  const [engineSource, setEngineSource] = useState<string>('');
   const [aiThinking, setAiThinking] = useState(false);
   const socketGame = useGameStore((s) => s.game);
   const game = useMemo(() => (FRONTEND_ONLY ? localGame : socketGame), [localGame, socketGame]);
@@ -62,10 +63,11 @@ export default function AIPlayPage() {
     let active = true;
 
     engine
-      .ready()
+      .readyState()
       .then(() => {
         if (!active) return;
         setEngineReady(true);
+        setEngineSource(engine.getWorkerUrl());
       })
       .catch((err: unknown) => {
         if (!active) return;
@@ -271,6 +273,9 @@ export default function AIPlayPage() {
               <p className="mt-2 text-xs text-slate-300">Loading Stockfish engine...</p>
             ) : null}
             {engineError ? <p className="mt-2 text-xs text-rose-300">Stockfish error: {engineError}</p> : null}
+            {engineReady && engineSource ? (
+              <p className="mt-2 break-all text-xs text-slate-400">Engine source: {engineSource}</p>
+            ) : null}
             <div className="mt-4 grid grid-cols-2 gap-3">
               {TIME_CONTROLS.map((tc) => (
                 <button

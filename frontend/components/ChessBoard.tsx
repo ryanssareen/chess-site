@@ -28,7 +28,12 @@ export function ChessBoard({ game, meColor, allowMoves = true, onMove }: Props) 
   const onDrop = (sourceSquare: string, targetSquare: string) => {
     if (!allowMoves) return false;
     const updated = new Chess(chess.fen());
-    const move = updated.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+    let move = null;
+    try {
+      move = updated.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+    } catch (_err) {
+      return false;
+    }
     if (move) {
       if (onMove) {
         setChess(updated);
